@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Rubric, Column, Row, CriteriaCell, Threshold } from '@/types/rubric';
+import { Rubric, Column, Row, CriteriaCell, Threshold, ScoringMode } from '@/types/rubric';
 
 interface RubricStore {
   rubrics: Rubric[];
@@ -12,11 +12,16 @@ interface RubricStore {
   saveRubric: () => void;
   deleteRubric: (id: string) => void;
   getRubricById: (id: string) => Rubric | undefined;
+  importRubric: (rubricData: Partial<Rubric>) => void;
   
   // Column actions
   addColumn: (column: Column) => void;
   updateColumn: (id: string, updates: Partial<Column>) => void;
   removeColumn: (id: string) => void;
+  reorderColumns: (columns: Column[]) => void;
+  
+  // Scoring mode
+  setScoringMode: (mode: ScoringMode) => void;
   
   // Row actions
   addRow: (row: Row) => void;
@@ -52,19 +57,28 @@ export const useRubricStore = create<RubricStore>()(
         if (!currentRubric || !currentRubric.name) return;
         
         const now = new Date();
-        const totalPossiblePoints = (currentRubric.columns || []).reduce(
-          (max, col) => Math.max(max, col.points),
-          0
-        ) * (currentRubric.rows || []).length;
+        const columns = currentRubric.columns || [];
+        const scoringMode = currentRubric.scoringMode || 'discrete';
+        
+        // Calculate total possible points based on scoring mode
+        let totalPossiblePoints: number;
+        if (scoringMode === 'cumulative') {
+          // Cumulative: sum of all column points
+          totalPossiblePoints = columns.reduce((sum, col) => sum + col.points, 0) * (currentRubric.rows || []).length;
+        } else {
+          // Discrete: max column points
+          totalPossiblePoints = Math.max(...columns.map(c => c.points), 0) * (currentRubric.rows || []).length;
+        }
         
         const rubricToSave: Rubric = {
           id: currentRubric.id || generateId(),
           name: currentRubric.name,
-          columns: currentRubric.columns || [],
+          columns: columns,
           rows: currentRubric.rows || [],
           criteria: currentRubric.criteria || [],
           thresholds: currentRubric.thresholds || [],
           totalPossiblePoints,
+          scoringMode,
           createdAt: currentRubric.createdAt || now,
           updatedAt: now,
         };
@@ -90,6 +104,35 @@ export const useRubricStore = create<RubricStore>()(
       
       getRubricById: (id) => get().rubrics.find(r => r.id === id),
       
+      importRubric: (rubricData) => {
+        const { rubrics } = get();
+        const now = new Date();
+        const columns = rubricData.columns || [];
+        const scoringMode = rubricData.scoringMode || 'discrete';
+        
+        let totalPossiblePoints: number;
+        if (scoringMode === 'cumulative') {
+          totalPossiblePoints = columns.reduce((sum, col) => sum + col.points, 0) * (rubricData.rows || []).length;
+        } else {
+          totalPossiblePoints = Math.max(...columns.map(c => c.points), 0) * (rubricData.rows || []).length;
+        }
+        
+        const newRubric: Rubric = {
+          id: generateId(),
+          name: rubricData.name || 'Imported Rubric',
+          columns: columns,
+          rows: rubricData.rows || [],
+          criteria: rubricData.criteria || [],
+          thresholds: rubricData.thresholds || [],
+          totalPossiblePoints,
+          scoringMode,
+          createdAt: now,
+          updatedAt: now,
+        };
+        
+        set({ rubrics: [...rubrics, newRubric] });
+      },
+      
       addColumn: (column) => set((state) => ({
         currentRubric: {
           ...state.currentRubric,
@@ -111,6 +154,20 @@ export const useRubricStore = create<RubricStore>()(
           ...state.currentRubric,
           columns: (state.currentRubric?.columns || []).filter(col => col.id !== id),
           criteria: (state.currentRubric?.criteria || []).filter(c => c.columnId !== id)
+        }
+      })),
+      
+      reorderColumns: (columns) => set((state) => ({
+        currentRubric: {
+          ...state.currentRubric,
+          columns
+        }
+      })),
+      
+      setScoringMode: (mode) => set((state) => ({
+        currentRubric: {
+          ...state.currentRubric,
+          scoringMode: mode
         }
       })),
       

@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useRubricStore } from '@/hooks/useRubricStore';
+import { ImportExportSection } from '@/components/ImportExportSection';
 import { Plus, ClipboardList, Trash2, GraduationCap, Edit } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -15,6 +16,7 @@ export function RubricList() {
       rows: [],
       criteria: [],
       thresholds: [],
+      scoringMode: 'discrete',
     });
     navigate('/builder');
   };
@@ -42,6 +44,9 @@ export function RubricList() {
           Create Rubric
         </Button>
       </div>
+
+      {/* Import/Export Section */}
+      <ImportExportSection />
 
       {rubrics.length === 0 ? (
         <Card className="shadow-soft">

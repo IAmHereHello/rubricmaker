@@ -22,6 +22,8 @@ export interface Threshold {
   label: string;
 }
 
+export type ScoringMode = 'discrete' | 'cumulative';
+
 export interface Rubric {
   id: string;
   name: string;
@@ -30,6 +32,7 @@ export interface Rubric {
   criteria: CriteriaCell[];
   thresholds: Threshold[];
   totalPossiblePoints: number;
+  scoringMode: ScoringMode;
   createdAt: Date;
   updatedAt: Date;
 }
