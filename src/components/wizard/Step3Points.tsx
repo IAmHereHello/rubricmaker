@@ -1,8 +1,11 @@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Hash, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Hash, ArrowRight, ArrowLeft, Layers, Zap } from 'lucide-react';
 import { useRubricStore } from '@/hooks/useRubricStore';
+import { cn } from '@/lib/utils';
 
 interface Step3PointsProps {
   onNext: () => void;
@@ -10,9 +13,10 @@ interface Step3PointsProps {
 }
 
 export function Step3Points({ onNext, onBack }: Step3PointsProps) {
-  const { currentRubric, updateColumn } = useRubricStore();
+  const { currentRubric, updateColumn, setScoringMode } = useRubricStore();
 
   const columns = currentRubric?.columns || [];
+  const scoringMode = currentRubric?.scoringMode || 'discrete';
 
   const allPointsSet = columns.every((col) => col.points > 0);
 
@@ -22,6 +26,15 @@ export function Step3Points({ onNext, onBack }: Step3PointsProps) {
     });
   };
 
+  const handleScoringModeChange = (checked: boolean) => {
+    setScoringMode(checked ? 'cumulative' : 'discrete');
+  };
+
+  // Calculate max points based on scoring mode
+  const maxPointsPerRow = scoringMode === 'cumulative'
+    ? columns.reduce((sum, col) => sum + col.points, 0)
+    : Math.max(...columns.map((c) => c.points), 0);
+
   return (
     <Card className="mx-auto max-w-2xl shadow-soft animate-fade-in">
       <CardHeader className="text-center">
@@ -30,10 +43,64 @@ export function Step3Points({ onNext, onBack }: Step3PointsProps) {
         </div>
         <CardTitle className="text-2xl">Assign Point Values</CardTitle>
         <CardDescription className="text-base">
-          Set the point value for each performance level
+          Set the point value for each performance level and choose scoring mode
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Scoring Mode Toggle */}
+        <div className="rounded-lg border bg-muted/30 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <Label htmlFor="scoring-mode" className="text-sm font-medium">
+              Scoring Mode
+            </Label>
+            <div className="flex items-center gap-2">
+              <span className={cn(
+                "text-sm transition-colors",
+                scoringMode === 'discrete' ? "text-foreground font-medium" : "text-muted-foreground"
+              )}>
+                Discrete
+              </span>
+              <Switch
+                id="scoring-mode"
+                checked={scoringMode === 'cumulative'}
+                onCheckedChange={handleScoringModeChange}
+              />
+              <span className={cn(
+                "text-sm transition-colors",
+                scoringMode === 'cumulative' ? "text-foreground font-medium" : "text-muted-foreground"
+              )}>
+                Cumulative
+              </span>
+            </div>
+          </div>
+          <div className={cn(
+            "flex items-start gap-3 p-3 rounded-md transition-colors",
+            scoringMode === 'discrete' ? "bg-primary/5" : "bg-status-expert-bg"
+          )}>
+            {scoringMode === 'discrete' ? (
+              <>
+                <Zap className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium">Discrete Scoring</p>
+                  <p className="text-xs text-muted-foreground">
+                    Only the points of the selected column are awarded.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <Layers className="h-5 w-5 text-status-expert mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium">Cumulative Scoring</p>
+                  <p className="text-xs text-muted-foreground">
+                    Points of the selected column PLUS all preceding columns are awarded.
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
         <Button
           variant="outline"
           onClick={autoAssignPoints}
@@ -75,8 +142,11 @@ export function Step3Points({ onNext, onBack }: Step3PointsProps) {
           <div className="text-center">
             <span className="text-sm text-muted-foreground">Maximum points per row</span>
             <p className="text-2xl font-bold text-primary">
-              {Math.max(...columns.map((c) => c.points), 0)} pts
+              {maxPointsPerRow} pts
             </p>
+            <span className="text-xs text-muted-foreground">
+              ({scoringMode === 'cumulative' ? 'Sum of all columns' : 'Highest column value'})
+            </span>
           </div>
         </div>
 

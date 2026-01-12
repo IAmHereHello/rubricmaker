@@ -5,7 +5,8 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ArrowLeft, Download, User, Check } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { ArrowLeft, CheckCircle2, User, Check } from 'lucide-react';
 import { useRubricStore } from '@/hooks/useRubricStore';
 import { StatusBadge } from '@/components/StatusBadge';
 import { cn } from '@/lib/utils';
@@ -21,6 +22,7 @@ export function GradingView() {
   
   const [studentName, setStudentName] = useState('');
   const [selections, setSelections] = useState<{ [rowId: string]: string }>({});
+  const [showSummary, setShowSummary] = useState(false);
 
   const handleCellClick = useCallback((rowId: string, columnId: string) => {
     setSelections((prev) => ({
@@ -32,16 +34,30 @@ export function GradingView() {
   const { totalScore, rowScores } = useMemo(() => {
     if (!rubric) return { totalScore: 0, rowScores: {} };
     
+    const scoringMode = rubric.scoringMode || 'discrete';
     const rowScores: { [rowId: string]: number } = {};
     let total = 0;
     
     rubric.rows.forEach((row) => {
       const selectedColumnId = selections[row.id];
       if (selectedColumnId) {
-        const column = rubric.columns.find((c) => c.id === selectedColumnId);
-        if (column) {
-          rowScores[row.id] = column.points;
-          total += column.points;
+        const selectedColumnIndex = rubric.columns.findIndex((c) => c.id === selectedColumnId);
+        
+        if (selectedColumnIndex !== -1) {
+          if (scoringMode === 'cumulative') {
+            // Sum all columns up to and including the selected one
+            let cumulativePoints = 0;
+            for (let i = 0; i <= selectedColumnIndex; i++) {
+              cumulativePoints += rubric.columns[i].points;
+            }
+            rowScores[row.id] = cumulativePoints;
+            total += cumulativePoints;
+          } else {
+            // Discrete: only the selected column's points
+            const column = rubric.columns[selectedColumnIndex];
+            rowScores[row.id] = column.points;
+            total += column.points;
+          }
         }
       } else {
         rowScores[row.id] = 0;
@@ -66,7 +82,7 @@ export function GradingView() {
     return rubric?.criteria.find((c) => c.rowId === rowId && c.columnId === columnId)?.description || '';
   };
 
-  const exportToPDF = () => {
+  const generatePDF = () => {
     if (!rubric) return;
 
     const doc = new jsPDF();
@@ -140,6 +156,13 @@ export function GradingView() {
     doc.save(`${rubric.name}_${studentName || 'rubric'}.pdf`);
   };
 
+  const handleDone = () => {
+    // Download PDF in background
+    generatePDF();
+    // Show summary modal
+    setShowSummary(true);
+  };
+
   if (!rubric) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -167,9 +190,9 @@ export function GradingView() {
             <h1 className="text-lg font-semibold truncate max-w-[200px] md:max-w-none">
               {rubric.name}
             </h1>
-            <Button onClick={exportToPDF} className="gap-2" disabled={!allRowsSelected}>
-              <Download className="h-4 w-4" />
-              <span className="hidden sm:inline">Export PDF</span>
+            <Button onClick={handleDone} className="gap-2" disabled={!allRowsSelected}>
+              <CheckCircle2 className="h-4 w-4" />
+              <span className="hidden sm:inline">Done</span>
             </Button>
           </div>
         </div>
@@ -346,6 +369,41 @@ export function GradingView() {
           </div>
         </div>
       </div>
+
+      {/* Summary Modal */}
+      <Dialog open={showSummary} onOpenChange={setShowSummary}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-center text-2xl">Grading Complete!</DialogTitle>
+            <DialogDescription className="text-center">
+              The PDF has been downloaded to your device.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col items-center py-6 space-y-4">
+            <div className="text-center">
+              <p className="text-sm text-muted-foreground">Student</p>
+              <p className="text-xl font-semibold">{studentName || 'Not specified'}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-sm text-muted-foreground">Total Score</p>
+              <p className="text-4xl font-bold text-primary">
+                {totalScore} <span className="text-lg text-muted-foreground">/ {rubric.totalPossiblePoints}</span>
+              </p>
+            </div>
+            {currentStatus && (
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground mb-2">Final Status</p>
+                <StatusBadge status={currentStatus.status} size="lg" />
+              </div>
+            )}
+          </div>
+          <DialogFooter className="sm:justify-center">
+            <Button onClick={() => navigate('/')} className="w-full sm:w-auto">
+              Back to Dashboard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

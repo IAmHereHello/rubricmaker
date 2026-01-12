@@ -1,21 +1,116 @@
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Columns3, Plus, Trash2, ArrowRight, ArrowLeft, GripVertical } from 'lucide-react';
 import { useRubricStore } from '@/hooks/useRubricStore';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { Column } from '@/types/rubric';
+import { cn } from '@/lib/utils';
 
 interface Step2ColumnsProps {
   onNext: () => void;
   onBack: () => void;
 }
 
+interface SortableColumnItemProps {
+  column: Column;
+  index: number;
+  onUpdate: (id: string, updates: Partial<Column>) => void;
+  onRemove: (id: string) => void;
+}
+
+function SortableColumnItem({ column, index, onUpdate, onRemove }: SortableColumnItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: column.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "flex items-center gap-3 rounded-lg border bg-card p-3 shadow-inner-soft animate-slide-in",
+        isDragging && "opacity-50 shadow-lg z-50"
+      )}
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing touch-none"
+      >
+        <GripVertical className="h-5 w-5 text-muted-foreground/50 hover:text-muted-foreground transition-colors" />
+      </button>
+      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+        {index + 1}
+      </span>
+      <Input
+        value={column.name}
+        onChange={(e) => onUpdate(column.id, { name: e.target.value })}
+        className="flex-1"
+        placeholder="Column name"
+      />
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => onRemove(column.id)}
+        className="text-muted-foreground hover:text-destructive"
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
+
 export function Step2Columns({ onNext, onBack }: Step2ColumnsProps) {
-  const { currentRubric, addColumn, updateColumn, removeColumn } = useRubricStore();
+  const { currentRubric, addColumn, updateColumn, removeColumn, reorderColumns } = useRubricStore();
   const [newColumnName, setNewColumnName] = useState('');
 
   const columns = currentRubric?.columns || [];
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = columns.findIndex((col) => col.id === active.id);
+      const newIndex = columns.findIndex((col) => col.id === over.id);
+      const newColumns = arrayMove(columns, oldIndex, newIndex);
+      reorderColumns(newColumns);
+    }
+  };
 
   const handleAddColumn = () => {
     if (newColumnName.trim()) {
@@ -54,7 +149,7 @@ export function Step2Columns({ onNext, onBack }: Step2ColumnsProps) {
         </div>
         <CardTitle className="text-2xl">Define Performance Levels</CardTitle>
         <CardDescription className="text-base">
-          Add columns for each performance level (e.g., Poor, Good, Excellent)
+          Add columns for each performance level. Drag to reorder.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -69,33 +164,28 @@ export function Step2Columns({ onNext, onBack }: Step2ColumnsProps) {
           </Button>
         )}
 
-        <div className="space-y-3">
-          {columns.map((column, index) => (
-            <div
-              key={column.id}
-              className="flex items-center gap-3 rounded-lg border bg-card p-3 shadow-inner-soft animate-slide-in"
-            >
-              <GripVertical className="h-5 w-5 text-muted-foreground/50" />
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                {index + 1}
-              </span>
-              <Input
-                value={column.name}
-                onChange={(e) => updateColumn(column.id, { name: e.target.value })}
-                className="flex-1"
-                placeholder="Column name"
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => removeColumn(column.id)}
-                className="text-muted-foreground hover:text-destructive"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={columns.map((c) => c.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="space-y-3">
+              {columns.map((column, index) => (
+                <SortableColumnItem
+                  key={column.id}
+                  column={column}
+                  index={index}
+                  onUpdate={updateColumn}
+                  onRemove={removeColumn}
+                />
+              ))}
             </div>
-          ))}
-        </div>
+          </SortableContext>
+        </DndContext>
 
         <div className="flex gap-3">
           <Input

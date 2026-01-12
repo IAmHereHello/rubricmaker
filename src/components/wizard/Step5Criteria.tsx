@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +15,7 @@ interface Step5CriteriaProps {
 export function Step5Criteria({ onNext, onBack }: Step5CriteriaProps) {
   const { currentRubric, setCriteria } = useRubricStore();
   const [selectedCell, setSelectedCell] = useState<{ rowId: string; columnId: string } | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const rows = currentRubric?.rows || [];
   const columns = currentRubric?.columns || [];
@@ -47,7 +48,9 @@ export function Step5Criteria({ onNext, onBack }: Step5CriteriaProps) {
     return { total, filled, percentage: total > 0 ? Math.round((filled / total) * 100) : 0 };
   }, [rows.length, columns.length, criteria]);
 
-  const moveToNextCell = () => {
+  const isAllCellsFilled = completionStats.filled === completionStats.total && completionStats.total > 0;
+
+  const moveToNextCell = useCallback(() => {
     if (!selectedCell) return;
     
     const currentRowIndex = rows.findIndex((r) => r.id === selectedCell.rowId);
@@ -58,7 +61,22 @@ export function Step5Criteria({ onNext, onBack }: Step5CriteriaProps) {
     } else if (currentRowIndex < rows.length - 1) {
       setSelectedCell({ rowId: rows[currentRowIndex + 1].id, columnId: columns[0].id });
     }
-  };
+  }, [selectedCell, rows, columns]);
+
+  // Handle keyboard shortcuts
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      moveToNextCell();
+    }
+  }, [moveToNextCell]);
+
+  // Focus textarea when cell is selected
+  useEffect(() => {
+    if (selectedCell && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [selectedCell]);
 
   return (
     <Card className="mx-auto max-w-5xl shadow-soft animate-fade-in">
@@ -68,7 +86,7 @@ export function Step5Criteria({ onNext, onBack }: Step5CriteriaProps) {
         </div>
         <CardTitle className="text-2xl">Define Criteria</CardTitle>
         <CardDescription className="text-base">
-          Click a cell to describe what that performance level looks like
+          Click a cell to describe what that performance level looks like. Use <kbd className="px-1.5 py-0.5 rounded bg-muted text-xs font-mono">Ctrl+Enter</kbd> to save and move to next.
         </CardDescription>
         <div className="mt-4 flex items-center justify-center gap-3">
           <div className="h-2 w-48 overflow-hidden rounded-full bg-muted">
@@ -167,15 +185,22 @@ export function Step5Criteria({ onNext, onBack }: Step5CriteriaProps) {
                     </p>
                   </div>
                   <Textarea
+                    ref={textareaRef}
                     value={currentDescription}
                     onChange={(e) => handleDescriptionChange(e.target.value)}
+                    onKeyDown={handleKeyDown}
                     placeholder="Describe what this performance level looks like for this learning goal..."
                     className="flex-1 resize-none"
                   />
-                  <Button onClick={moveToNextCell} variant="outline" className="mt-3">
-                    Next Cell
-                    <ChevronRight className="ml-2 h-4 w-4" />
-                  </Button>
+                  <div className="flex items-center justify-between mt-3">
+                    <span className="text-xs text-muted-foreground">
+                      <kbd className="px-1.5 py-0.5 rounded bg-muted text-xs font-mono">Ctrl+Enter</kbd> to save & next
+                    </span>
+                    <Button onClick={moveToNextCell} variant="outline" size="sm">
+                      Next Cell
+                      <ChevronRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </div>
                 </>
               ) : (
                 <div className="flex flex-1 items-center justify-center text-center">
@@ -197,7 +222,7 @@ export function Step5Criteria({ onNext, onBack }: Step5CriteriaProps) {
             Back
           </Button>
           <Button onClick={onNext} className="flex-1">
-            Continue
+            {isAllCellsFilled ? 'Finish' : 'Continue'}
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         </div>
