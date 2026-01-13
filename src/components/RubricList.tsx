@@ -1,15 +1,20 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useRubricStore } from '@/hooks/useRubricStore';
 import { ImportExportSection } from '@/components/ImportExportSection';
 import { GradedStudentsTable } from '@/components/GradedStudentsTable';
+import { GradingModeModal } from '@/components/GradingModeModal';
 import { Plus, ClipboardList, Trash2, GraduationCap, Edit, Users } from 'lucide-react';
 import { format } from 'date-fns';
+import { Rubric } from '@/types/rubric';
 
 export function RubricList() {
   const navigate = useNavigate();
   const { rubrics, deleteRubric, setCurrentRubric } = useRubricStore();
+  const [showGradingModal, setShowGradingModal] = useState(false);
+  const [selectedRubricId, setSelectedRubricId] = useState<string | null>(null);
 
   const handleCreateNew = () => {
     setCurrentRubric({
@@ -23,13 +28,24 @@ export function RubricList() {
     navigate('/builder');
   };
 
-  const handleEdit = (rubric: typeof rubrics[0]) => {
+  const handleEdit = (rubric: Rubric) => {
     setCurrentRubric(rubric);
     navigate('/builder');
   };
 
-  const handleGrade = (rubricId: string) => {
-    navigate(`/grade/${rubricId}`);
+  const handleGradeClick = (rubricId: string) => {
+    setSelectedRubricId(rubricId);
+    setShowGradingModal(true);
+  };
+
+  const handleGradingModeSelect = (mode: 'vertical' | 'horizontal', studentNames?: string[]) => {
+    setShowGradingModal(false);
+    if (mode === 'vertical') {
+      navigate(`/grade/${selectedRubricId}`);
+    } else {
+      // Navigate with student names in state
+      navigate(`/grade/${selectedRubricId}/horizontal`, { state: { studentNames } });
+    }
   };
 
   return (
@@ -115,7 +131,7 @@ export function RubricList() {
                     </Button>
                     <Button
                       className="flex-1 gap-2"
-                      onClick={() => handleGrade(rubric.id)}
+                      onClick={() => handleGradeClick(rubric.id)}
                     >
                       <GraduationCap className="h-4 w-4" />
                       Grade
@@ -137,6 +153,13 @@ export function RubricList() {
           ))}
         </div>
       )}
+
+      {/* Grading Mode Selection Modal */}
+      <GradingModeModal
+        open={showGradingModal}
+        onOpenChange={setShowGradingModal}
+        onSelectMode={handleGradingModeSelect}
+      />
     </div>
   );
 }

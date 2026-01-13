@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -12,12 +13,21 @@ interface Step1RubricInfoProps {
 
 export function Step1RubricInfo({ onNext, onBack }: Step1RubricInfoProps) {
   const { currentRubric, updateCurrentRubric } = useRubricStore();
+  const [touched, setTouched] = useState(false);
+
+  const isNameEmpty = !currentRubric?.name?.trim();
+  const showError = touched && isNameEmpty;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (currentRubric?.name?.trim()) {
+    setTouched(true);
+    if (!isNameEmpty) {
       onNext();
     }
+  };
+
+  const handleBlur = () => {
+    setTouched(true);
   };
 
   return (
@@ -35,16 +45,20 @@ export function Step1RubricInfo({ onNext, onBack }: Step1RubricInfoProps) {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="rubric-name" className="text-base font-medium">
-              Rubric Name
+              Rubric Name <span className="text-destructive">*</span>
             </Label>
             <Input
               id="rubric-name"
               placeholder="e.g., Essay Writing Assessment, Science Project Rubric"
               value={currentRubric?.name || ''}
               onChange={(e) => updateCurrentRubric({ name: e.target.value })}
-              className="h-12 text-base"
+              onBlur={handleBlur}
+              className={`h-12 text-base ${showError ? 'border-destructive focus-visible:ring-destructive' : ''}`}
               autoFocus
             />
+            {showError && (
+              <p className="text-sm text-destructive">Please name your rubric</p>
+            )}
           </div>
           
           <div className="flex gap-3">
@@ -62,7 +76,7 @@ export function Step1RubricInfo({ onNext, onBack }: Step1RubricInfoProps) {
             <Button
               type="submit"
               className={`h-12 text-base ${onBack ? 'flex-1' : 'w-full'}`}
-              disabled={!currentRubric?.name?.trim()}
+              disabled={isNameEmpty}
             >
               Continue
               <ArrowRight className="ml-2 h-4 w-4" />
