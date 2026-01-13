@@ -17,12 +17,31 @@ export interface CriteriaCell {
 
 export interface Threshold {
   min: number;
-  max: number;
+  max: number | null; // null means "and up" for highest threshold
   status: 'development' | 'mastered' | 'expert';
   label: string;
+  requiresNoLowest?: boolean; // Advanced: requires no lowest column scores
 }
 
 export type ScoringMode = 'discrete' | 'cumulative';
+
+export interface CellFeedback {
+  rowId: string;
+  columnId: string;
+  feedback: string;
+}
+
+export interface GradedStudent {
+  id: string;
+  studentName: string;
+  selections: { [rowId: string]: string }; // rowId -> columnId
+  cellFeedback: CellFeedback[];
+  generalFeedback: string;
+  totalScore: number;
+  status: 'development' | 'mastered' | 'expert';
+  statusLabel: string;
+  gradedAt: Date;
+}
 
 export interface Rubric {
   id: string;
@@ -33,6 +52,7 @@ export interface Rubric {
   thresholds: Threshold[];
   totalPossiblePoints: number;
   scoringMode: ScoringMode;
+  gradedStudents: GradedStudent[];
   createdAt: Date;
   updatedAt: Date;
 }
