@@ -56,7 +56,7 @@ export function RubricBuilder() {
 
         <div className="mt-8">
           {currentStep === 1 && (
-            <Step1RubricInfo onNext={() => setCurrentStep(2)} />
+            <Step1RubricInfo onNext={() => setCurrentStep(2)} onBack={handleCancel} />
           )}
           {currentStep === 2 && (
             <Step2Columns

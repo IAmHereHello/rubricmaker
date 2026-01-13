@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Rubric, Column, Row, CriteriaCell, Threshold, ScoringMode } from '@/types/rubric';
+import { Rubric, Column, Row, CriteriaCell, Threshold, ScoringMode, GradedStudent } from '@/types/rubric';
 
 interface RubricStore {
   rubrics: Rubric[];
@@ -34,6 +34,10 @@ interface RubricStore {
   
   // Threshold actions
   setThresholds: (thresholds: Threshold[]) => void;
+  
+  // Graded students actions
+  addGradedStudent: (rubricId: string, student: GradedStudent) => void;
+  clearGradedStudents: (rubricId: string) => void;
 }
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -70,6 +74,8 @@ export const useRubricStore = create<RubricStore>()(
           totalPossiblePoints = Math.max(...columns.map(c => c.points), 0) * (currentRubric.rows || []).length;
         }
         
+        const existingRubric = rubrics.find(r => r.id === currentRubric.id);
+        
         const rubricToSave: Rubric = {
           id: currentRubric.id || generateId(),
           name: currentRubric.name,
@@ -79,6 +85,7 @@ export const useRubricStore = create<RubricStore>()(
           thresholds: currentRubric.thresholds || [],
           totalPossiblePoints,
           scoringMode,
+          gradedStudents: existingRubric?.gradedStudents || currentRubric.gradedStudents || [],
           createdAt: currentRubric.createdAt || now,
           updatedAt: now,
         };
@@ -126,6 +133,7 @@ export const useRubricStore = create<RubricStore>()(
           thresholds: rubricData.thresholds || [],
           totalPossiblePoints,
           scoringMode,
+          gradedStudents: [],
           createdAt: now,
           updatedAt: now,
         };
@@ -230,6 +238,22 @@ export const useRubricStore = create<RubricStore>()(
           ...state.currentRubric,
           thresholds
         }
+      })),
+      
+      addGradedStudent: (rubricId, student) => set((state) => ({
+        rubrics: state.rubrics.map(r => 
+          r.id === rubricId 
+            ? { ...r, gradedStudents: [...(r.gradedStudents || []), student] }
+            : r
+        )
+      })),
+      
+      clearGradedStudents: (rubricId) => set((state) => ({
+        rubrics: state.rubrics.map(r => 
+          r.id === rubricId 
+            ? { ...r, gradedStudents: [] }
+            : r
+        )
       })),
     }),
     {

@@ -5,23 +5,28 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { ArrowLeft, CheckCircle2, User, Check } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ArrowLeft, User, Check, MessageSquare, Save, UserPlus } from 'lucide-react';
 import { useRubricStore } from '@/hooks/useRubricStore';
 import { StatusBadge } from '@/components/StatusBadge';
 import { cn } from '@/lib/utils';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { CellFeedback, GradedStudent, Threshold } from '@/types/rubric';
 
 export function GradingView() {
   const { rubricId } = useParams();
   const navigate = useNavigate();
-  const { getRubricById } = useRubricStore();
+  const { getRubricById, addGradedStudent } = useRubricStore();
   
   const rubric = getRubricById(rubricId || '');
   
   const [studentName, setStudentName] = useState('');
   const [selections, setSelections] = useState<{ [rowId: string]: string }>({});
+  const [cellFeedback, setCellFeedback] = useState<CellFeedback[]>([]);
+  const [generalFeedback, setGeneralFeedback] = useState('');
   const [showSummary, setShowSummary] = useState(false);
 
   const handleCellClick = useCallback((rowId: string, columnId: string) => {
@@ -30,6 +35,26 @@ export function GradingView() {
       [rowId]: prev[rowId] === columnId ? '' : columnId,
     }));
   }, []);
+
+  const getCellFeedback = (rowId: string, columnId: string) => {
+    return cellFeedback.find(f => f.rowId === rowId && f.columnId === columnId)?.feedback || '';
+  };
+
+  const setCellFeedbackValue = (rowId: string, columnId: string, feedback: string) => {
+    setCellFeedback(prev => {
+      const existingIndex = prev.findIndex(f => f.rowId === rowId && f.columnId === columnId);
+      if (existingIndex >= 0) {
+        if (!feedback) {
+          return prev.filter((_, i) => i !== existingIndex);
+        }
+        return prev.map((f, i) => i === existingIndex ? { ...f, feedback } : f);
+      }
+      if (feedback) {
+        return [...prev, { rowId, columnId, feedback }];
+      }
+      return prev;
+    });
+  };
 
   const { totalScore, rowScores } = useMemo(() => {
     if (!rubric) return { totalScore: 0, rowScores: {} };
@@ -67,16 +92,36 @@ export function GradingView() {
     return { totalScore: total, rowScores };
   }, [rubric, selections]);
 
+  // Check if any row has the lowest column selected
+  const hasLowestColumnSelected = useMemo(() => {
+    if (!rubric || rubric.columns.length === 0) return false;
+    const lowestColumnId = rubric.columns[0].id;
+    return Object.values(selections).some(colId => colId === lowestColumnId);
+  }, [rubric, selections]);
+
   const currentStatus = useMemo(() => {
     if (!rubric) return null;
     
-    for (const threshold of rubric.thresholds) {
-      if (totalScore >= threshold.min && totalScore <= threshold.max) {
+    // Sort thresholds by min value descending to check highest first
+    const sortedThresholds = [...rubric.thresholds].sort((a, b) => b.min - a.min);
+    
+    for (const threshold of sortedThresholds) {
+      const meetsScoreRequirement = threshold.max === null 
+        ? totalScore >= threshold.min 
+        : totalScore >= threshold.min && totalScore <= threshold.max;
+      
+      if (meetsScoreRequirement) {
+        // Check advanced requirements
+        if (threshold.requiresNoLowest && hasLowestColumnSelected) {
+          // Downgrade to next lower threshold
+          continue;
+        }
         return threshold;
       }
     }
+    
     return rubric.thresholds[0] || null;
-  }, [rubric, totalScore]);
+  }, [rubric, totalScore, hasLowestColumnSelected]);
 
   const getCriteriaValue = (rowId: string, columnId: string) => {
     return rubric?.criteria.find((c) => c.rowId === rowId && c.columnId === columnId)?.description || '';
@@ -108,18 +153,20 @@ export function GradingView() {
       const selectedColumnId = selections[row.id];
       const selectedColumn = rubric.columns.find((c) => c.id === selectedColumnId);
       const criteria = selectedColumnId ? getCriteriaValue(row.id, selectedColumnId) : '-';
+      const feedback = selectedColumnId ? getCellFeedback(row.id, selectedColumnId) : '';
       
       return [
         row.name,
         selectedColumn?.name || '-',
         criteria,
         `${rowScores[row.id] || 0} pts`,
+        feedback || '-',
       ];
     });
 
     autoTable(doc, {
       startY: 70,
-      head: [['Learning Goal', 'Level', 'Criteria', 'Points']],
+      head: [['Learning Goal', 'Level', 'Criteria', 'Points', 'Feedback']],
       body: tableData,
       theme: 'striped',
       headStyles: {
@@ -128,16 +175,28 @@ export function GradingView() {
         fontStyle: 'bold',
       },
       styles: {
-        fontSize: 9,
-        cellPadding: 4,
+        fontSize: 8,
+        cellPadding: 3,
       },
       columnStyles: {
-        0: { cellWidth: 45 },
-        1: { cellWidth: 30 },
-        2: { cellWidth: 80 },
-        3: { cellWidth: 25 },
+        0: { cellWidth: 35 },
+        1: { cellWidth: 25 },
+        2: { cellWidth: 55 },
+        3: { cellWidth: 20 },
+        4: { cellWidth: 45 },
       },
     });
+
+    // General Feedback
+    if (generalFeedback) {
+      const finalY = (doc as any).lastAutoTable.finalY || 70;
+      doc.setFontSize(12);
+      doc.setTextColor(60, 60, 60);
+      doc.text('General Feedback:', 14, finalY + 15);
+      doc.setFontSize(10);
+      const splitFeedback = doc.splitTextToSize(generalFeedback, 180);
+      doc.text(splitFeedback, 14, finalY + 25);
+    }
 
     // Footer
     const pageCount = doc.getNumberOfPages();
@@ -156,11 +215,43 @@ export function GradingView() {
     doc.save(`${rubric.name}_${studentName || 'rubric'}.pdf`);
   };
 
-  const handleDone = () => {
-    // Download PDF in background
+  const saveGradedStudent = (): GradedStudent => {
+    const student: GradedStudent = {
+      id: Math.random().toString(36).substr(2, 9),
+      studentName: studentName || 'Unknown',
+      selections: { ...selections },
+      cellFeedback: [...cellFeedback],
+      generalFeedback,
+      totalScore,
+      status: currentStatus?.status || 'development',
+      statusLabel: currentStatus?.label || 'In Ontwikkeling',
+      gradedAt: new Date(),
+    };
+    
+    if (rubricId) {
+      addGradedStudent(rubricId, student);
+    }
+    
+    return student;
+  };
+
+  const clearForm = () => {
+    setStudentName('');
+    setSelections({});
+    setCellFeedback([]);
+    setGeneralFeedback('');
+  };
+
+  const handleSaveAndExit = () => {
+    saveGradedStudent();
     generatePDF();
-    // Show summary modal
     setShowSummary(true);
+  };
+
+  const handleSaveAndNext = () => {
+    saveGradedStudent();
+    generatePDF();
+    clearForm();
   };
 
   if (!rubric) {
@@ -190,10 +281,21 @@ export function GradingView() {
             <h1 className="text-lg font-semibold truncate max-w-[200px] md:max-w-none">
               {rubric.name}
             </h1>
-            <Button onClick={handleDone} className="gap-2" disabled={!allRowsSelected}>
-              <CheckCircle2 className="h-4 w-4" />
-              <span className="hidden sm:inline">Done</span>
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                onClick={handleSaveAndNext} 
+                variant="outline"
+                className="gap-2" 
+                disabled={!allRowsSelected}
+              >
+                <UserPlus className="h-4 w-4" />
+                <span className="hidden sm:inline">Save & Next</span>
+              </Button>
+              <Button onClick={handleSaveAndExit} className="gap-2" disabled={!allRowsSelected}>
+                <Save className="h-4 w-4" />
+                <span className="hidden sm:inline">Save & Exit</span>
+              </Button>
+            </div>
           </div>
         </div>
       </header>
@@ -251,6 +353,11 @@ export function GradingView() {
                     <StatusBadge status={currentStatus.status} size="lg" />
                   </div>
                 )}
+                {hasLowestColumnSelected && currentStatus?.requiresNoLowest === false && (
+                  <p className="text-xs text-amber-600 text-center">
+                    Note: Some higher statuses require no lowest-column scores
+                  </p>
+                )}
               </CardContent>
             </Card>
 
@@ -267,7 +374,7 @@ export function GradingView() {
           </div>
 
           {/* Main Grid */}
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-3 space-y-4">
             <Card className="shadow-soft">
               <CardContent className="p-0">
                 <ScrollArea className="w-full">
@@ -303,33 +410,66 @@ export function GradingView() {
                             {rubric.columns.map((col) => {
                               const isSelected = selections[row.id] === col.id;
                               const criteria = getCriteriaValue(row.id, col.id);
+                              const feedback = getCellFeedback(row.id, col.id);
                               
                               return (
                                 <td key={col.id} className="border-b p-2">
-                                  <button
-                                    onClick={() => handleCellClick(row.id, col.id)}
-                                    className={cn(
-                                      "w-full min-h-[80px] rounded-lg border-2 p-3 text-sm transition-all duration-200",
-                                      "hover:border-primary/50 hover:bg-primary/5",
-                                      isSelected
-                                        ? "border-primary bg-primary/10 ring-2 ring-primary/20"
-                                        : "border-transparent bg-muted/30"
-                                    )}
-                                  >
-                                    {isSelected && (
-                                      <div className="flex items-center justify-center mb-2">
-                                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                                          <Check className="h-4 w-4" />
+                                  <div className="relative">
+                                    <button
+                                      onClick={() => handleCellClick(row.id, col.id)}
+                                      className={cn(
+                                        "w-full min-h-[80px] rounded-lg border-2 p-3 text-sm transition-all duration-200",
+                                        "hover:border-primary/50 hover:bg-primary/5",
+                                        isSelected
+                                          ? "border-primary bg-primary/10 ring-2 ring-primary/20"
+                                          : "border-transparent bg-muted/30"
+                                      )}
+                                    >
+                                      {isSelected && (
+                                        <div className="flex items-center justify-center mb-2">
+                                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                                            <Check className="h-4 w-4" />
+                                          </div>
                                         </div>
-                                      </div>
+                                      )}
+                                      <p className={cn(
+                                        "text-xs leading-relaxed",
+                                        isSelected ? "text-foreground" : "text-muted-foreground"
+                                      )}>
+                                        {criteria || <em className="opacity-50">No criteria</em>}
+                                      </p>
+                                    </button>
+                                    
+                                    {/* Feedback Popover */}
+                                    {isSelected && (
+                                      <Popover>
+                                        <PopoverTrigger asChild>
+                                          <button
+                                            className={cn(
+                                              "absolute top-1 right-1 p-1.5 rounded-full transition-colors",
+                                              feedback 
+                                                ? "bg-amber-500 text-white" 
+                                                : "bg-muted hover:bg-muted-foreground/20 text-muted-foreground"
+                                            )}
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            <MessageSquare className="h-3.5 w-3.5" />
+                                          </button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-64" onClick={(e) => e.stopPropagation()}>
+                                          <div className="space-y-2">
+                                            <Label className="text-xs font-medium">Cell Feedback</Label>
+                                            <Textarea
+                                              placeholder="Add specific feedback for this cell..."
+                                              value={feedback}
+                                              onChange={(e) => setCellFeedbackValue(row.id, col.id, e.target.value)}
+                                              className="min-h-[80px] text-sm"
+                                            />
+                                          </div>
+                                        </PopoverContent>
+                                      </Popover>
                                     )}
-                                    <p className={cn(
-                                      "text-xs leading-relaxed",
-                                      isSelected ? "text-foreground" : "text-muted-foreground"
-                                    )}>
-                                      {criteria || <em className="opacity-50">No criteria</em>}
-                                    </p>
-                                  </button>
+                                  </div>
                                 </td>
                               );
                             })}
@@ -366,6 +506,24 @@ export function GradingView() {
                 </ScrollArea>
               </CardContent>
             </Card>
+
+            {/* General Feedback */}
+            <Card className="shadow-soft">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  General Feedback
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  placeholder="Add overall feedback and comments for the student..."
+                  value={generalFeedback}
+                  onChange={(e) => setGeneralFeedback(e.target.value)}
+                  className="min-h-[120px]"
+                />
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
@@ -376,7 +534,7 @@ export function GradingView() {
           <DialogHeader>
             <DialogTitle className="text-center text-2xl">Grading Complete!</DialogTitle>
             <DialogDescription className="text-center">
-              The PDF has been downloaded to your device.
+              The PDF has been downloaded and the grade has been saved.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col items-center py-6 space-y-4">

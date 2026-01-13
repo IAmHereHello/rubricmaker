@@ -3,7 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useRubricStore } from '@/hooks/useRubricStore';
 import { ImportExportSection } from '@/components/ImportExportSection';
-import { Plus, ClipboardList, Trash2, GraduationCap, Edit } from 'lucide-react';
+import { GradedStudentsTable } from '@/components/GradedStudentsTable';
+import { Plus, ClipboardList, Trash2, GraduationCap, Edit, Users } from 'lucide-react';
 import { format } from 'date-fns';
 
 export function RubricList() {
@@ -17,6 +18,7 @@ export function RubricList() {
       criteria: [],
       thresholds: [],
       scoringMode: 'discrete',
+      gradedStudents: [],
     });
     navigate('/builder');
   };
@@ -65,55 +67,73 @@ export function RubricList() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {rubrics.map((rubric) => (
-            <Card
-              key={rubric.id}
-              className="shadow-soft hover:shadow-soft-lg transition-shadow group"
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <CardTitle className="text-lg truncate">{rubric.name}</CardTitle>
-                    <CardDescription className="mt-1">
-                      {rubric.rows.length} goals · {rubric.columns.length} levels
-                    </CardDescription>
+        <div className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {rubrics.map((rubric) => (
+              <Card
+                key={rubric.id}
+                className="shadow-soft hover:shadow-soft-lg transition-shadow group"
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <CardTitle className="text-lg truncate">{rubric.name}</CardTitle>
+                      <CardDescription className="mt-1">
+                        {rubric.rows.length} goals · {rubric.columns.length} levels
+                      </CardDescription>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => deleteRubric(rubric.id)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => deleteRubric(rubric.id)}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
-                  <span>{rubric.totalPossiblePoints} total points</span>
-                  <span>·</span>
-                  <span>Updated {format(new Date(rubric.updatedAt), 'MMM d, yyyy')}</span>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1 gap-2"
-                    onClick={() => handleEdit(rubric)}
-                  >
-                    <Edit className="h-4 w-4" />
-                    Edit
-                  </Button>
-                  <Button
-                    className="flex-1 gap-2"
-                    onClick={() => handleGrade(rubric.id)}
-                  >
-                    <GraduationCap className="h-4 w-4" />
-                    Grade
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+                    <span>{rubric.totalPossiblePoints} total points</span>
+                    <span>·</span>
+                    <span>Updated {format(new Date(rubric.updatedAt), 'MMM d, yyyy')}</span>
+                  </div>
+                  {rubric.gradedStudents && rubric.gradedStudents.length > 0 && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+                      <Users className="h-4 w-4" />
+                      <span>{rubric.gradedStudents.length} students graded</span>
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1 gap-2"
+                      onClick={() => handleEdit(rubric)}
+                    >
+                      <Edit className="h-4 w-4" />
+                      Edit
+                    </Button>
+                    <Button
+                      className="flex-1 gap-2"
+                      onClick={() => handleGrade(rubric.id)}
+                    >
+                      <GraduationCap className="h-4 w-4" />
+                      Grade
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Graded Students Tables */}
+          {rubrics.map((rubric) => (
+            rubric.gradedStudents && rubric.gradedStudents.length > 0 && (
+              <div key={`students-${rubric.id}`}>
+                <h3 className="text-lg font-semibold mb-3">{rubric.name} - Class Results</h3>
+                <GradedStudentsTable rubric={rubric} />
+              </div>
+            )
           ))}
         </div>
       )}

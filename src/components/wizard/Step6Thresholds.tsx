@@ -3,7 +3,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Gauge, ArrowLeft, Save, Sparkles } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Gauge, ArrowLeft, Save, Sparkles, AlertTriangle } from 'lucide-react';
 import { useRubricStore } from '@/hooks/useRubricStore';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Threshold } from '@/types/rubric';
@@ -19,24 +20,35 @@ export function Step6Thresholds({ onComplete, onBack }: Step6ThresholdsProps) {
   const columns = currentRubric?.columns || [];
   const rows = currentRubric?.rows || [];
   const thresholds = currentRubric?.thresholds || [];
+  const scoringMode = currentRubric?.scoringMode || 'discrete';
 
-  const maxPointsPerRow = Math.max(...columns.map((c) => c.points), 0);
+  // Calculate max points based on scoring mode
+  const maxPointsPerRow = scoringMode === 'cumulative'
+    ? columns.reduce((sum, col) => sum + col.points, 0)
+    : Math.max(...columns.map((c) => c.points), 0);
   const totalPossiblePoints = maxPointsPerRow * rows.length;
 
   useEffect(() => {
     if (thresholds.length === 0 && totalPossiblePoints > 0) {
       const third = Math.floor(totalPossiblePoints / 3);
       setThresholds([
-        { min: 0, max: third, status: 'development', label: 'In Ontwikkeling' },
-        { min: third + 1, max: third * 2, status: 'mastered', label: 'Beheerst' },
-        { min: third * 2 + 1, max: totalPossiblePoints, status: 'expert', label: 'Expert' },
+        { min: 0, max: third, status: 'development', label: 'In Ontwikkeling', requiresNoLowest: false },
+        { min: third + 1, max: third * 2, status: 'mastered', label: 'Beheerst', requiresNoLowest: false },
+        { min: third * 2 + 1, max: null, status: 'expert', label: 'Expert', requiresNoLowest: false },
       ]);
     }
   }, [totalPossiblePoints, thresholds.length, setThresholds]);
 
-  const handleThresholdChange = (index: number, field: 'min' | 'max', value: number) => {
+  const handleThresholdChange = (index: number, field: 'min' | 'max', value: number | null) => {
     const newThresholds = thresholds.map((t, i) =>
       i === index ? { ...t, [field]: value } : t
+    );
+    setThresholds(newThresholds);
+  };
+
+  const handleRequiresNoLowestChange = (index: number, checked: boolean) => {
+    const newThresholds = thresholds.map((t, i) =>
+      i === index ? { ...t, requiresNoLowest: checked } : t
     );
     setThresholds(newThresholds);
   };
@@ -44,11 +56,18 @@ export function Step6Thresholds({ onComplete, onBack }: Step6ThresholdsProps) {
   const autoDistribute = () => {
     const third = Math.floor(totalPossiblePoints / 3);
     setThresholds([
-      { min: 0, max: third, status: 'development', label: 'In Ontwikkeling' },
-      { min: third + 1, max: third * 2, status: 'mastered', label: 'Beheerst' },
-      { min: third * 2 + 1, max: totalPossiblePoints, status: 'expert', label: 'Expert' },
+      { min: 0, max: third, status: 'development', label: 'In Ontwikkeling', requiresNoLowest: false },
+      { min: third + 1, max: third * 2, status: 'mastered', label: 'Beheerst', requiresNoLowest: false },
+      { min: third * 2 + 1, max: null, status: 'expert', label: 'Expert', requiresNoLowest: false },
     ]);
   };
+
+  const isHighestThreshold = (index: number) => {
+    return index === thresholds.length - 1;
+  };
+
+  // Get lowest column ID for display
+  const lowestColumn = columns.length > 0 ? columns[0] : null;
 
   return (
     <Card className="mx-auto max-w-2xl shadow-soft animate-fade-in">
@@ -88,7 +107,7 @@ export function Step6Thresholds({ onComplete, onBack }: Step6ThresholdsProps) {
               <div className="mb-3 flex items-center justify-between">
                 <StatusBadge status={threshold.status} />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
                   <Label className="text-xs text-muted-foreground">Min Score</Label>
                   <Input
@@ -101,17 +120,50 @@ export function Step6Thresholds({ onComplete, onBack }: Step6ThresholdsProps) {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs text-muted-foreground">Max Score</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    max={totalPossiblePoints}
-                    value={threshold.max}
-                    onChange={(e) => handleThresholdChange(index, 'max', parseInt(e.target.value) || 0)}
-                    className="mt-1"
-                  />
+                  <Label className="text-xs text-muted-foreground">
+                    {isHighestThreshold(index) ? 'Max Score (and up)' : 'Max Score'}
+                  </Label>
+                  {isHighestThreshold(index) ? (
+                    <div className="mt-1 h-9 px-3 py-2 rounded-md border bg-muted/50 text-sm text-muted-foreground flex items-center">
+                      {totalPossiblePoints}+ pts
+                    </div>
+                  ) : (
+                    <Input
+                      type="number"
+                      min="0"
+                      max={totalPossiblePoints}
+                      value={threshold.max ?? ''}
+                      onChange={(e) => handleThresholdChange(index, 'max', parseInt(e.target.value) || 0)}
+                      className="mt-1"
+                    />
+                  )}
                 </div>
               </div>
+              
+              {/* Advanced Requirements */}
+              {threshold.status !== 'development' && (
+                <div className="border-t pt-3 mt-3">
+                  <div className="flex items-start space-x-3">
+                    <Checkbox
+                      id={`requires-no-lowest-${threshold.status}`}
+                      checked={threshold.requiresNoLowest || false}
+                      onCheckedChange={(checked) => handleRequiresNoLowestChange(index, checked === true)}
+                    />
+                    <div className="grid gap-1.5 leading-none">
+                      <label
+                        htmlFor={`requires-no-lowest-${threshold.status}`}
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex items-center gap-2"
+                      >
+                        <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                        Requires no lowest column scores
+                      </label>
+                      <p className="text-xs text-muted-foreground">
+                        Student cannot achieve this status if any row has "{lowestColumn?.name || 'first column'}" selected
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
