@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Columns3, Plus, Trash2, ArrowRight, ArrowLeft, GripVertical } from 'lucide-react';
 import { useRubricStore } from '@/hooks/useRubricStore';
+import { useLanguage } from '@/contexts/LanguageContext';
 import {
   DndContext,
   closestCenter,
@@ -130,8 +131,15 @@ export function Step2Columns({ onNext, onBack }: Step2ColumnsProps) {
     }
   };
 
+  const { t } = useLanguage();
+
   const addDefaultColumns = () => {
-    const defaults = ['Poor', 'Satisfactory', 'Good', 'Excellent'];
+    const defaults = [
+      t('defaults.poor'),
+      t('defaults.satisfactory'),
+      t('defaults.good'),
+      t('defaults.excellent')
+    ];
     defaults.forEach((name) => {
       addColumn({
         id: Math.random().toString(36).substr(2, 9),
@@ -160,7 +168,7 @@ export function Step2Columns({ onNext, onBack }: Step2ColumnsProps) {
             className="w-full border-dashed"
           >
             <Plus className="mr-2 h-4 w-4" />
-            Add Default Columns (Poor, Satisfactory, Good, Excellent)
+            {t('action.add')} Default Columns ({t('defaults.poor')}, {t('defaults.satisfactory')}, {t('defaults.good')}, {t('defaults.excellent')})
           </Button>
         )}
 

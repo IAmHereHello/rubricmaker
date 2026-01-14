@@ -112,7 +112,8 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
     : studentOrder[currentStudentIndex] || '';
 
   // -- Persistence (Save & Resume) --
-  const storageKey = `rubric-grading-session-${rubric.id}`;
+  const safeClassName = className.replace(/[^a-zA-Z0-9]/g, '_');
+  const storageKey = `rubric-grading-session-${rubric.id}-${safeClassName}`;
 
   // Load session on mount
   useEffect(() => {

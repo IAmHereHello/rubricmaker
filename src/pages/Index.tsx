@@ -6,12 +6,15 @@ import { Button } from '@/components/ui/button';
 import { importGradingSession } from '@/lib/excel-state';
 import { useToast } from '@/components/ui/use-toast';
 import { useRubricStore } from '@/hooks/useRubricStore';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const Index = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { getRubricById } = useRubricStore();
+  const { t } = useLanguage();
 
   const handleImportClick = () => {
     fileInputRef.current?.click();
@@ -74,11 +77,12 @@ const Index = () => {
               <ClipboardList className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-xl font-bold">Rubric Grader</h1>
-              <p className="text-xs text-muted-foreground">Create, manage & grade with ease</p>
+              <h1 className="text-xl font-bold">{t('app.title')}</h1>
+              <p className="text-xs text-muted-foreground">{t('app.subtitle')}</p>
             </div>
           </div>
           <div className="flex gap-2">
+            <LanguageSwitcher />
             <input
               type="file"
               ref={fileInputRef}
@@ -88,10 +92,10 @@ const Index = () => {
             />
             <Button variant="outline" onClick={handleImportClick} className="gap-2">
               <Upload className="h-4 w-4" />
-              Import Session
+              {t('action.import_session')}
             </Button>
             <Link to="/results" className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2">
-              View Results
+              {t('action.view_results')}
             </Link>
           </div>
         </div>
