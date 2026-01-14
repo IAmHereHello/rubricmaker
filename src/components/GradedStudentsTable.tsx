@@ -15,16 +15,18 @@ import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Rubric } from '@/types/rubric';
+import { Rubric, GradedStudent } from '@/types/rubric';
 
 interface GradedStudentsTableProps {
   rubric: Rubric;
+  students?: GradedStudent[];
+  hideClear?: boolean;
 }
 
-export function GradedStudentsTable({ rubric }: GradedStudentsTableProps) {
+export function GradedStudentsTable({ rubric, students: propStudents, hideClear = false }: GradedStudentsTableProps) {
   const { clearGradedStudents } = useRubricStore();
 
-  const students = rubric.gradedStudents || [];
+  const students = propStudents || rubric.gradedStudents || [];
 
   const exportToPDF = () => {
     if (students.length === 0) return;
@@ -272,10 +274,12 @@ export function GradedStudentsTable({ rubric }: GradedStudentsTableProps) {
             </CardDescription>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => clearGradedStudents(rubric.id)} size="sm">
-              <Trash2 className="h-4 w-4 mr-2" />
-              Clear All
-            </Button>
+            {!hideClear && (
+              <Button variant="outline" onClick={() => clearGradedStudents(rubric.id)} size="sm">
+                <Trash2 className="h-4 w-4 mr-2" />
+                Clear All
+              </Button>
+            )}
             <Button variant="outline" onClick={exportToPDF} size="sm">
               <FileText className="h-4 w-4 mr-2" />
               Export PDF

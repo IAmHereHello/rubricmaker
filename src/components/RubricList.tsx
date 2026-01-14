@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useRubricStore } from '@/hooks/useRubricStore';
 import { ImportExportSection } from '@/components/ImportExportSection';
-import { GradedStudentsTable } from '@/components/GradedStudentsTable';
+
 import { GradingModeModal } from '@/components/GradingModeModal';
 import { Plus, ClipboardList, Trash2, GraduationCap, Edit, Users } from 'lucide-react';
 import { format } from 'date-fns';
@@ -142,15 +142,7 @@ export function RubricList() {
             ))}
           </div>
 
-          {/* Graded Students Tables */}
-          {rubrics.map((rubric) => (
-            rubric.gradedStudents && rubric.gradedStudents.length > 0 && (
-              <div key={`students-${rubric.id}`}>
-                <h3 className="text-lg font-semibold mb-3">{rubric.name} - Class Results</h3>
-                <GradedStudentsTable rubric={rubric} />
-              </div>
-            )
-          ))}
+
         </div>
       )}
 

@@ -28,7 +28,7 @@ export function Step5Criteria({ onNext, onBack }: Step5CriteriaProps) {
   const selectedRow = rows.find((r) => r.id === selectedCell?.rowId);
   const selectedColumn = columns.find((c) => c.id === selectedCell?.columnId);
 
-  const currentDescription = selectedCell 
+  const currentDescription = selectedCell
     ? getCriteriaValue(selectedCell.rowId, selectedCell.columnId)
     : '';
 
@@ -52,10 +52,10 @@ export function Step5Criteria({ onNext, onBack }: Step5CriteriaProps) {
 
   const moveToNextCell = useCallback(() => {
     if (!selectedCell) return;
-    
+
     const currentRowIndex = rows.findIndex((r) => r.id === selectedCell.rowId);
     const currentColIndex = columns.findIndex((c) => c.id === selectedCell.columnId);
-    
+
     if (currentColIndex < columns.length - 1) {
       setSelectedCell({ rowId: selectedCell.rowId, columnId: columns[currentColIndex + 1].id });
     } else if (currentRowIndex < rows.length - 1) {
@@ -112,11 +112,11 @@ export function Step5Criteria({ onNext, onBack }: Step5CriteriaProps) {
                 <table className="w-full border-collapse">
                   <thead>
                     <tr>
-                      <th className="sticky left-0 z-10 bg-grid-header p-3 text-left text-sm font-semibold border-b min-w-[140px]">
+                      <th className="sticky top-0 left-0 z-30 bg-card p-3 text-left text-sm font-semibold border-b min-w-[140px] shadow-[0_1px_2px_rgba(0,0,0,0.1)]">
                         Learning Goal
                       </th>
                       {columns.map((col) => (
-                        <th key={col.id} className="bg-grid-header p-3 text-center text-sm font-semibold border-b min-w-[120px]">
+                        <th key={col.id} className="sticky top-0 z-20 bg-card p-3 text-center text-sm font-semibold border-b min-w-[120px] shadow-[0_1px_2px_rgba(0,0,0,0.1)]">
                           {col.name}
                           <span className="block text-xs font-normal text-muted-foreground">
                             {col.points} pts
@@ -140,7 +140,7 @@ export function Step5Criteria({ onNext, onBack }: Step5CriteriaProps) {
                         {columns.map((col) => {
                           const hasContent = getCriteriaValue(row.id, col.id).trim();
                           const isSelected = selectedCell?.rowId === row.id && selectedCell?.columnId === col.id;
-                          
+
                           return (
                             <td key={col.id} className="border-b p-1">
                               <button

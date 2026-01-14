@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
-import { ArrowLeft, ArrowRight, Check, Users, Target, MessageSquare } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Users, Target, MessageSquare, Download } from 'lucide-react';
 import { useRubricStore } from '@/hooks/useRubricStore';
 import { StatusBadge } from '@/components/StatusBadge';
 import { GradedStudentsTable } from '@/components/GradedStudentsTable';
@@ -15,6 +15,8 @@ import { cn } from '@/lib/utils';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { CellFeedback, GradedStudent, Rubric, Threshold, StudentGradingData } from '@/types/rubric';
+import { exportGradingSession, GradingSessionState } from '@/lib/excel-state';
+import { useToast } from '@/components/ui/use-toast';
 
 interface HorizontalGradingViewProps {
   rubric: Rubric;
@@ -26,6 +28,43 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
   const navigate = useNavigate();
   const { addGradedStudent, getRubricById } = useRubricStore();
   const inputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
+
+  const handleSaveAndExit = () => {
+    // 1. Prepare State
+    const dataObj: Record<string, StudentGradingData> = {};
+    studentsData.forEach((val, key) => { dataObj[key] = val; });
+
+    // Need completedStudentCount in scope or state
+    // We have it in state: completedStudentCount
+
+    const sessionState: GradingSessionState = {
+      rubricId: rubric.id,
+      currentRowIndex,
+      studentOrder,
+      currentStudentIndex,
+      studentsData: dataObj,
+      timestamp: Date.now(),
+      completedStudentCount
+    };
+
+    // 2. Export
+    exportGradingSession({
+      rubric,
+      sessionState,
+      initialStudentNames,
+      className
+    });
+
+    // 3. Notify & Exit
+    toast({
+      title: "Session Saved",
+      description: "Your progress has been downloaded as an Excel file.",
+    });
+
+    // Navigate home
+    navigate('/');
+  };
 
   // -- State --
   // Current row being graded (0-indexed)
@@ -389,13 +428,20 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
 
   return (
     <div className="min-h-screen bg-background">
+
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <Button variant="ghost" onClick={() => navigate('/')} className="gap-2">
-              <ArrowLeft className="h-4 w-4" />
-              Exit (Progress Saved)
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => navigate('/')} className="gap-2">
+                <ArrowLeft className="h-4 w-4" />
+                Exit
+              </Button>
+              <Button variant="outline" onClick={handleSaveAndExit} className="gap-2 border-primary/20 hover:bg-primary/5 text-primary">
+                <Download className="h-4 w-4" />
+                Save & Continue Later
+              </Button>
+            </div>
             <h1 className="text-lg font-semibold truncate max-w-[200px] md:max-w-none">
               {rubric.name} - Horizontal Grading
             </h1>
