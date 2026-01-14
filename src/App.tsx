@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import Builder from "./pages/Builder";
 import Grade from "./pages/Grade";
 import HorizontalGrade from "./pages/HorizontalGrade";
+import Results from "./pages/Results";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,6 +23,7 @@ const App = () => (
           <Route path="/builder" element={<Builder />} />
           <Route path="/grade/:rubricId" element={<Grade />} />
           <Route path="/grade/:rubricId/horizontal" element={<HorizontalGrade />} />
+          <Route path="/results" element={<Results />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

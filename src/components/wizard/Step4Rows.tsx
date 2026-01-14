@@ -1,13 +1,17 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Target, Plus, Trash2, ArrowRight, ArrowLeft, Sparkles, Star, Calculator } from 'lucide-react';
+import { Target, Plus, Trash2, ArrowRight, ArrowLeft, Sparkles, Star, Calculator, FileUp, Loader2 } from 'lucide-react';
 import { useRubricStore } from '@/hooks/useRubricStore';
 import { cn } from '@/lib/utils';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Configure worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 interface Step4RowsProps {
   onNext: () => void;
@@ -19,6 +23,8 @@ export function Step4Rows({ onNext, onBack }: Step4RowsProps) {
   const [newRowName, setNewRowName] = useState('');
   const [bulkInput, setBulkInput] = useState('');
   const [showBulkAdd, setShowBulkAdd] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const rows = currentRubric?.rows || [];
 
@@ -53,6 +59,57 @@ export function Step4Rows({ onNext, onBack }: Step4RowsProps) {
     }
   };
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    setShowBulkAdd(true);
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = '';
+
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+          .map((item: any) => item.str)
+          .join(' ');
+        fullText += pageText + '\n';
+      }
+
+      // Basic cleanup: split by periods or newlines, or try to respect layout?
+      // PDF text extraction often results in fragmented lines.
+      // We will try to preserve newlines from extraction if possible, but map-join ' ' flattens lines in a page.
+      // Let's improve extraction: separate items by newline if y-coord changes?
+      // For MVP "Best Effort":
+      // Just append to textarea and let user edit.
+      // We already joined with ' ', let's try to just use raw strings.
+
+      // Re-do extraction for better line preservation:
+      fullText = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        // Simple join with newline if the item is "far" from previous? 
+        // Or just join with space and let user format.
+        // Actually, just using simple join is standard for basic extract.
+        const pageStrings = textContent.items.map((item: any) => item.str);
+        fullText += pageStrings.join('\n') + '\n\n';
+      }
+
+      setBulkInput(prev => (prev ? prev + '\n\n' : '') + fullText.trim());
+    } catch (error) {
+      console.error('Error parsing PDF:', error);
+      // alert('Failed to parse PDF. Please try copying text manually.');
+    } finally {
+      setIsImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -81,16 +138,36 @@ export function Step4Rows({ onNext, onBack }: Step4RowsProps) {
             <Sparkles className="mr-2 h-4 w-4" />
             {showBulkAdd ? "Hide Bulk Add" : "Bulk Add Goals"}
           </Button>
+          <Button
+            variant="outline"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex-1"
+            disabled={isImporting}
+          >
+            {isImporting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <FileUp className="mr-2 h-4 w-4" />
+            )}
+            Import PDF (Exp.)
+          </Button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept=".pdf"
+            className="hidden"
+          />
         </div>
 
         {showBulkAdd && (
-          <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-4 animate-fade-in">
-            <p className="text-sm font-medium">Paste your learning goals (one per line)</p>
+          <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-4 animate-fade-in relative">
+            <p className="text-sm font-medium">Paste your learning goals or edit extracted text (one per line)</p>
             <Textarea
               value={bulkInput}
               onChange={(e) => setBulkInput(e.target.value)}
               placeholder="Clear thesis statement&#10;Supporting evidence&#10;Proper grammar&#10;Conclusion"
-              className="min-h-[120px]"
+              className="min-h-[200px]"
             />
             <Button onClick={handleBulkAdd} disabled={!bulkInput.trim()} className="w-full">
               <Plus className="mr-2 h-4 w-4" />
@@ -130,7 +207,7 @@ export function Step4Rows({ onNext, onBack }: Step4RowsProps) {
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
-              
+
               {/* Row Options */}
               <div className="mt-3 flex flex-wrap items-center gap-4 pl-10">
                 <div className="flex items-center gap-2">
@@ -144,7 +221,7 @@ export function Step4Rows({ onNext, onBack }: Step4RowsProps) {
                     Bonus Row
                   </Label>
                 </div>
-                
+
                 <div className="flex items-center gap-2">
                   <Calculator className="h-4 w-4 text-muted-foreground" />
                   <Label htmlFor={`calc-${row.id}`} className="text-sm">Calculation Points:</Label>

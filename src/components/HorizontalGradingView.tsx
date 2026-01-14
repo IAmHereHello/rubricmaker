@@ -14,7 +14,7 @@ import { GradedStudentsTable } from '@/components/GradedStudentsTable';
 import { cn } from '@/lib/utils';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { CellFeedback, GradedStudent, Rubric, Threshold } from '@/types/rubric';
+import { CellFeedback, GradedStudent, Rubric, Threshold, StudentGradingData } from '@/types/rubric';
 
 interface HorizontalGradingViewProps {
   rubric: Rubric;
@@ -22,76 +22,122 @@ interface HorizontalGradingViewProps {
   className: string;
 }
 
-interface StudentGradingData {
-  studentName: string;
-  selections: { [rowId: string]: string };
-  cellFeedback: CellFeedback[];
-  generalFeedback: string;
-}
-
 export function HorizontalGradingView({ rubric, initialStudentNames, className }: HorizontalGradingViewProps) {
   const navigate = useNavigate();
   const { addGradedStudent, getRubricById } = useRubricStore();
   const inputRef = useRef<HTMLInputElement>(null);
-  
+
+  // -- State --
   // Current row being graded (0-indexed)
   const [currentRowIndex, setCurrentRowIndex] = useState(0);
-  
   // Student order established in round 1
   const [studentOrder, setStudentOrder] = useState<string[]>([]);
-  
   // Current student index within the current row
   const [currentStudentIndex, setCurrentStudentIndex] = useState(0);
-  
   // Name input for first row (autocomplete)
   const [nameInput, setNameInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
-  
   // All grading data for each student
   const [studentsData, setStudentsData] = useState<Map<string, StudentGradingData>>(new Map());
-  
   // Cell feedback for current selection
   const [currentCellFeedback, setCurrentCellFeedback] = useState('');
-  
   // General feedback (per student)
   const [generalFeedback, setGeneralFeedback] = useState('');
-  
   // Show summary at end
   const [showSummary, setShowSummary] = useState(false);
-  
   // Current column selection for this student+row
   const [selectedColumn, setSelectedColumn] = useState<string | null>(null);
-  
-  // Is this the first round (establishing order)?
+  // Calculation point checkbox state
+  const [calculationCorrect, setCalculationCorrect] = useState<boolean>(true); // Default to true
+
+  // Time Tracking State
+  const [sessionStartTime] = useState<number>(Date.now());
+  const [completedStudentCount, setCompletedStudentCount] = useState(0);
+
+  // -- Derived State --
   const isFirstRow = currentRowIndex === 0;
   const currentRow = rubric.rows[currentRowIndex];
-  
-  // Available names for autocomplete (not yet graded for this row)
+
+  // Available names for autocomplete
   const availableNames = useMemo(() => {
     if (!isFirstRow) return [];
     const gradedInThisRow = Array.from(studentsData.keys());
-    return initialStudentNames.filter(name => 
-      !gradedInThisRow.includes(name) && 
+    return initialStudentNames.filter(name =>
+      !gradedInThisRow.includes(name) &&
       name.toLowerCase().includes(nameInput.toLowerCase())
     );
   }, [initialStudentNames, studentsData, nameInput, isFirstRow]);
-  
-  // Current student name (from order in subsequent rows)
-  const currentStudentName = isFirstRow 
-    ? nameInput 
+
+  const currentStudentName = isFirstRow
+    ? nameInput
     : studentOrder[currentStudentIndex] || '';
-  
-  // Get or create student data
+
+  // -- Persistence (Save & Resume) --
+  const storageKey = `rubric-grading-session-${rubric.id}`;
+
+  // Load session on mount
+  useEffect(() => {
+    const savedSession = localStorage.getItem(storageKey);
+    if (savedSession) {
+      try {
+        const parsed = JSON.parse(savedSession);
+        // Validate basic structure
+        if (parsed.rubricId === rubric.id) {
+          setCurrentRowIndex(parsed.currentRowIndex);
+          setStudentOrder(parsed.studentOrder);
+          setCurrentStudentIndex(parsed.currentStudentIndex);
+          // Convert object back to Map
+          const dataMap = new Map<string, StudentGradingData>();
+          Object.entries(parsed.studentsData).forEach(([key, val]) => {
+            dataMap.set(key, val as StudentGradingData);
+          });
+          setStudentsData(dataMap);
+          setCompletedStudentCount(parsed.completedStudentCount || 0);
+          console.log('Restored session from localStorage');
+        }
+      } catch (e) {
+        console.error('Failed to parse saved session', e);
+      }
+    }
+  }, [rubric.id, storageKey]);
+
+  // Save session on change
+  useEffect(() => {
+    if (studentsData.size === 0 && currentRowIndex === 0 && currentStudentIndex === 0) return;
+
+    // Debounce save slightly or just save on every significant change
+    const dataObj: Record<string, StudentGradingData> = {};
+    studentsData.forEach((val, key) => { dataObj[key] = val; });
+
+    const sessionState = {
+      rubricId: rubric.id,
+      currentRowIndex,
+      studentOrder,
+      currentStudentIndex,
+      studentsData: dataObj,
+      timestamp: Date.now(),
+      completedStudentCount,
+    };
+    localStorage.setItem(storageKey, JSON.stringify(sessionState));
+  }, [rubric.id, storageKey, currentRowIndex, studentOrder, currentStudentIndex, studentsData, completedStudentCount]);
+
+  // Clear session helper
+  const clearSession = () => {
+    localStorage.removeItem(storageKey);
+  };
+
+
+  // -- Helpers --
   const getStudentData = useCallback((name: string): StudentGradingData => {
     return studentsData.get(name) || {
       studentName: name,
       selections: {},
       cellFeedback: [],
       generalFeedback: '',
+      calculationCorrect: {},
     };
   }, [studentsData]);
-  
-  // Update student data
+
   const updateStudentData = useCallback((name: string, updates: Partial<StudentGradingData>) => {
     setStudentsData(prev => {
       const newMap = new Map(prev);
@@ -100,66 +146,83 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
         selections: {},
         cellFeedback: [],
         generalFeedback: '',
+        calculationCorrect: {},
       };
       newMap.set(name, { ...existing, ...updates });
       return newMap;
     });
   }, []);
 
-  // Calculate score for a student
+  // Initialize Calculation Checkbox when moving to a new student/row
+  useEffect(() => {
+    if (currentStudentName && currentRow) {
+      const data = getStudentData(currentStudentName);
+      // Default to true if not set, or load existing value
+      const existingVal = data.calculationCorrect?.[currentRow.id];
+      setCalculationCorrect(existingVal !== undefined ? existingVal : true);
+    }
+  }, [currentStudentName, currentRow, getStudentData]);
+
   const calculateStudentScore = useCallback((studentName: string) => {
     const data = studentsData.get(studentName);
     if (!data) return { totalScore: 0, rowScores: {} };
-    
+
     const scoringMode = rubric.scoringMode || 'discrete';
     const rowScores: { [rowId: string]: number } = {};
     let total = 0;
-    
+
     rubric.rows.forEach((row) => {
       const selectedColumnId = data.selections[row.id];
+
+      // Points from Level Selection
+      let rowPoints = 0;
       if (selectedColumnId) {
         const selectedColumnIndex = rubric.columns.findIndex((c) => c.id === selectedColumnId);
-        
         if (selectedColumnIndex !== -1) {
           if (scoringMode === 'cumulative') {
             let cumulativePoints = 0;
             for (let i = 0; i <= selectedColumnIndex; i++) {
               cumulativePoints += rubric.columns[i].points;
             }
-            rowScores[row.id] = cumulativePoints;
-            total += cumulativePoints;
+            rowPoints = cumulativePoints;
           } else {
-            const column = rubric.columns[selectedColumnIndex];
-            rowScores[row.id] = column.points;
-            total += column.points;
+            rowPoints = rubric.columns[selectedColumnIndex].points;
           }
         }
-      } else {
-        rowScores[row.id] = 0;
       }
+
+      // Add Calculation Points if verified
+      if (row.calculationPoints && row.calculationPoints > 0) {
+        const isCorrect = data.calculationCorrect?.[row.id] !== false; // Default true if undefined, but logic handles explicit false
+        if (isCorrect) {
+          rowPoints += row.calculationPoints;
+        }
+      }
+
+      rowScores[row.id] = rowPoints;
+      total += rowPoints;
     });
-    
+
     return { totalScore: total, rowScores };
   }, [rubric, studentsData]);
 
-  // Get status for a student
   const getStudentStatus = useCallback((studentName: string): Threshold | null => {
     const { totalScore } = calculateStudentScore(studentName);
     const data = studentsData.get(studentName);
-    
+
     // Check if any row has the lowest column selected
     const lowestColumnId = rubric.columns[0]?.id;
-    const hasLowestColumnSelected = data 
+    const hasLowestColumnSelected = data
       ? Object.values(data.selections).some(colId => colId === lowestColumnId)
       : false;
-    
+
     const sortedThresholds = [...rubric.thresholds].sort((a, b) => b.min - a.min);
-    
+
     for (const threshold of sortedThresholds) {
-      const meetsScoreRequirement = threshold.max === null 
-        ? totalScore >= threshold.min 
+      const meetsScoreRequirement = threshold.max === null
+        ? totalScore >= threshold.min
         : totalScore >= threshold.min && totalScore <= threshold.max;
-      
+
       if (meetsScoreRequirement) {
         if (threshold.requiresNoLowest && hasLowestColumnSelected) {
           continue;
@@ -167,24 +230,31 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
         return threshold;
       }
     }
-    
+
     return rubric.thresholds[0] || null;
   }, [rubric, studentsData, calculateStudentScore]);
 
-  // Handle column selection
+  // -- Handlers --
+
   const handleColumnSelect = (columnId: string) => {
     setSelectedColumn(columnId);
   };
-  
-  // Save current selection and move to next student
+
   const handleNextStudent = () => {
     if (!currentStudentName || !selectedColumn) return;
-    
-    // Save the selection
+
     const studentData = getStudentData(currentStudentName);
+
+    // Update Selections
     const newSelections = { ...studentData.selections, [currentRow.id]: selectedColumn };
-    
-    // Save cell feedback if any
+
+    // Update Calculation Correctness
+    const newCalculationCorrect = { ...studentData.calculationCorrect };
+    if (currentRow.calculationPoints && currentRow.calculationPoints > 0) {
+      newCalculationCorrect[currentRow.id] = calculationCorrect;
+    }
+
+    // Update Feedback
     let newCellFeedback = [...studentData.cellFeedback];
     if (currentCellFeedback) {
       const existingIndex = newCellFeedback.findIndex(
@@ -196,48 +266,48 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
         newCellFeedback.push({ rowId: currentRow.id, columnId: selectedColumn, feedback: currentCellFeedback });
       }
     }
-    
-    updateStudentData(currentStudentName, { 
+
+    // Save to State
+    updateStudentData(currentStudentName, {
       selections: newSelections,
       cellFeedback: newCellFeedback,
       generalFeedback: studentData.generalFeedback || generalFeedback,
+      calculationCorrect: newCalculationCorrect
     });
-    
+
+    // Track Progress
+    setCompletedStudentCount(prev => prev + 1);
+
     // If first row, add to student order
     if (isFirstRow) {
       setStudentOrder(prev => [...prev, currentStudentName]);
     }
-    
-    // Reset for next student
+
+    // Reset inputs
     setSelectedColumn(null);
     setCurrentCellFeedback('');
     setGeneralFeedback('');
-    
+    // Reset calculation checkbox for next student (default to true)
+    setCalculationCorrect(true);
+
     if (isFirstRow) {
-      // Clear name input and check if all initial names are done
       setNameInput('');
-      const gradedCount = studentOrder.length + 1; // +1 for current
+      const gradedCount = studentOrder.length + 1;
       if (gradedCount >= initialStudentNames.length) {
-        // Move to next row
         moveToNextRow();
       }
-      // Focus name input
       setTimeout(() => inputRef.current?.focus(), 100);
     } else {
-      // Move to next student in order
       if (currentStudentIndex + 1 >= studentOrder.length) {
-        // All students done for this row, move to next row
         moveToNextRow();
       } else {
         setCurrentStudentIndex(prev => prev + 1);
       }
     }
   };
-  
-  // Move to next row
+
   const moveToNextRow = () => {
     if (currentRowIndex + 1 >= rubric.rows.length) {
-      // All rows done, finish up
       finishGrading();
     } else {
       setCurrentRowIndex(prev => prev + 1);
@@ -245,43 +315,45 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
       setSelectedColumn(null);
     }
   };
-  
-  // Finish grading and save all students
+
   const finishGrading = () => {
-    // Save all students to store
+    // Save to Store
     studentOrder.forEach(studentName => {
       const data = studentsData.get(studentName);
       if (data) {
         const { totalScore } = calculateStudentScore(studentName);
         const status = getStudentStatus(studentName);
-        
+
         const gradedStudent: GradedStudent = {
           id: Math.random().toString(36).substr(2, 9),
           studentName: data.studentName,
           selections: data.selections,
           cellFeedback: data.cellFeedback,
+          calculationCorrect: data.calculationCorrect, // Save calc status
           generalFeedback: data.generalFeedback,
+          className: className, // Persist class name
           totalScore,
           status: status?.status || 'development',
           statusLabel: status?.label || 'In Ontwikkeling',
           gradedAt: new Date(),
         };
-        
+
         addGradedStudent(rubric.id, gradedStudent);
       }
     });
-    
+
+    // Clear LocalStorage Session
+    clearSession();
     setShowSummary(true);
   };
-  
-  // Handle suggestion click
+
   const handleSuggestionClick = (name: string) => {
     setNameInput(name);
     setShowSuggestions(false);
     inputRef.current?.focus();
   };
-  
-  // Calculate overall progress
+
+  // -- Progress Stats --
   const totalStudents = isFirstRow ? initialStudentNames.length : studentOrder.length;
   const totalCells = rubric.rows.length * totalStudents;
   const completedCells = useMemo(() => {
@@ -292,22 +364,26 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
     return count;
   }, [studentsData]);
   const progressPercent = totalCells > 0 ? (completedCells / totalCells) * 100 : 0;
-  
-  // Progress within current row
-  const studentsGradedThisRow = isFirstRow 
-    ? studentOrder.length 
-    : currentStudentIndex;
-  const rowProgress = totalStudents > 0 
-    ? ((studentsGradedThisRow) / totalStudents) * 100 
-    : 0;
 
-  // Get criteria for current row
+  const studentsGradedThisRow = isFirstRow ? studentOrder.length : currentStudentIndex;
+  const rowProgress = totalStudents > 0 ? ((studentsGradedThisRow) / totalStudents) * 100 : 0;
+
+  // Average Time Calc
+  const avgTimePerStudent = useMemo(() => {
+    if (completedStudentCount === 0) return 0;
+    const elapsedSecs = (Date.now() - sessionStartTime) / 1000;
+    return Math.round(elapsedSecs / completedStudentCount);
+  }, [completedStudentCount, sessionStartTime]);
+
+
   const getCriteriaValue = (rowId: string, columnId: string) => {
     return rubric.criteria.find((c) => c.rowId === rowId && c.columnId === columnId)?.description || '';
   };
 
-  // Updated rubric with graded students for summary
   const updatedRubric = useMemo(() => {
+    // This is used for generating the preview table in summary
+    // Logic needs to ensure it reflects current session data if store isn't updated yet?
+    // Actually finishGrading updates the store, so getting from store is fine.
     return getRubricById(rubric.id) || rubric;
   }, [getRubricById, rubric.id, showSummary]);
 
@@ -318,7 +394,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
           <div className="flex items-center justify-between">
             <Button variant="ghost" onClick={() => navigate('/')} className="gap-2">
               <ArrowLeft className="h-4 w-4" />
-              Exit
+              Exit (Progress Saved)
             </Button>
             <h1 className="text-lg font-semibold truncate max-w-[200px] md:max-w-none">
               {rubric.name} - Horizontal Grading
@@ -329,7 +405,6 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
       </header>
 
       <div className="container mx-auto px-4 py-6">
-        {/* Progress Overview */}
         <Card className="shadow-soft mb-6">
           <CardContent className="pt-6">
             <div className="space-y-4">
@@ -340,7 +415,12 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
               <Progress value={progressPercent} className="h-2" />
               <div className="flex items-center justify-between text-sm text-muted-foreground">
                 <span>Row {currentRowIndex + 1} of {rubric.rows.length}</span>
-                <span>{completedCells} of {totalCells} cells completed</span>
+                <span className="flex gap-4">
+                  <span>{completedCells} of {totalCells} cells</span>
+                  {avgTimePerStudent > 0 && (
+                    <span className="text-primary font-medium">~{avgTimePerStudent}s / student</span>
+                  )}
+                </span>
               </div>
             </div>
           </CardContent>
@@ -361,8 +441,14 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
                 <p className="text-sm text-muted-foreground mt-1">
                   Row {currentRowIndex + 1} of {rubric.rows.length}
                 </p>
+                {/* Visual indicator of calculation points available */}
+                {currentRow?.calculationPoints && currentRow.calculationPoints > 0 && (
+                  <div className="mt-2 text-xs font-semibold text-amber-600 flex items-center gap-1">
+                    <span>⚠️ Includes {currentRow.calculationPoints} calculation points</span>
+                  </div>
+                )}
               </div>
-              
+
               <div className="mt-4 space-y-2">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Students graded for this row</span>
@@ -404,8 +490,6 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
                     onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                     autoFocus
                   />
-                  
-                  {/* Autocomplete Suggestions */}
                   {showSuggestions && availableNames.length > 0 && (
                     <div className="absolute z-10 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-48 overflow-auto">
                       {availableNames.slice(0, 10).map((name) => (
@@ -429,7 +513,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
                   {rubric.columns.map((col) => {
                     const criteria = getCriteriaValue(currentRow?.id || '', col.id);
                     const isSelected = selectedColumn === col.id;
-                    
+
                     return (
                       <button
                         key={col.id}
@@ -463,6 +547,29 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
                   })}
                 </div>
               </div>
+
+              {/* Calculation Points Checkbox */}
+              {selectedColumn && currentRow?.calculationPoints && currentRow.calculationPoints > 0 && (
+                <div className="p-4 bg-muted/30 rounded-lg border border-dashed border-muted-foreground/50">
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      id="calculation-check"
+                      checked={calculationCorrect}
+                      onChange={(e) => setCalculationCorrect(e.target.checked)}
+                      className="mt-1 h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary"
+                    />
+                    <div className="grid gap-1.5 leading-none">
+                      <Label htmlFor="calculation-check" className="text-base font-medium cursor-pointer">
+                        Award Calculation Points (+{currentRow.calculationPoints})
+                      </Label>
+                      <p className="text-sm text-muted-foreground">
+                        Uncheck if the student made a calculation error, even if the logic was correct.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Cell Feedback */}
               {selectedColumn && (
