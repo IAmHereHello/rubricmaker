@@ -3,7 +3,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Edit3, ArrowRight, ArrowLeft, Check, ChevronRight } from 'lucide-react';
+import { Edit3, ArrowRight, ArrowLeft, Check, ChevronRight, Star } from 'lucide-react';
 import { useRubricStore } from '@/hooks/useRubricStore';
 import { cn } from '@/lib/utils';
 
@@ -102,7 +102,7 @@ export function Step5Criteria({ onNext, onBack }: Step5CriteriaProps) {
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="grid gap-6 lg:grid-cols-2">
-          {/* Grid Preview */}
+          {/* Grid Preview - with horizontal scrolling */}
           <div className="space-y-3">
             <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">
               Rubric Grid
@@ -112,7 +112,7 @@ export function Step5Criteria({ onNext, onBack }: Step5CriteriaProps) {
                 <table className="w-full border-collapse">
                   <thead>
                     <tr>
-                      <th className="sticky left-0 z-10 bg-grid-header p-3 text-left text-sm font-semibold border-b">
+                      <th className="sticky left-0 z-10 bg-grid-header p-3 text-left text-sm font-semibold border-b min-w-[140px]">
                         Learning Goal
                       </th>
                       {columns.map((col) => (
@@ -128,8 +128,14 @@ export function Step5Criteria({ onNext, onBack }: Step5CriteriaProps) {
                   <tbody>
                     {rows.map((row) => (
                       <tr key={row.id}>
-                        <td className="sticky left-0 z-10 bg-card p-3 text-sm font-medium border-b">
-                          {row.name}
+                        <td className={cn(
+                          "sticky left-0 z-10 p-3 text-sm font-medium border-b min-w-[140px]",
+                          row.isBonus ? "bg-amber-50 dark:bg-amber-950/20" : "bg-card"
+                        )}>
+                          <div className="flex items-center gap-2">
+                            {row.isBonus && <Star className="h-3 w-3 text-amber-500" />}
+                            <span className="truncate">{row.name}</span>
+                          </div>
                         </td>
                         {columns.map((col) => {
                           const hasContent = getCriteriaValue(row.id, col.id).trim();
@@ -175,8 +181,15 @@ export function Step5Criteria({ onNext, onBack }: Step5CriteriaProps) {
             <div className="rounded-lg border bg-card p-4 h-[400px] flex flex-col">
               {selectedCell ? (
                 <>
-                  <div className="mb-4 rounded-lg bg-primary/10 p-3">
-                    <p className="text-sm font-medium text-primary">
+                  <div className={cn(
+                    "mb-4 rounded-lg p-3",
+                    selectedRow?.isBonus ? "bg-amber-100/50 dark:bg-amber-900/30" : "bg-primary/10"
+                  )}>
+                    <p className={cn(
+                      "text-sm font-medium",
+                      selectedRow?.isBonus ? "text-amber-700 dark:text-amber-300" : "text-primary"
+                    )}>
+                      {selectedRow?.isBonus && <Star className="h-3 w-3 inline mr-1" />}
                       Editing: <span className="font-bold">{selectedRow?.name}</span>
                     </p>
                     <p className="flex items-center gap-1 text-xs text-muted-foreground">

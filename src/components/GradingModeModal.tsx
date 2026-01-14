@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ArrowRight, Users, User, ClipboardList } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -11,13 +12,15 @@ type GradingMode = 'vertical' | 'horizontal';
 interface GradingModeModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSelectMode: (mode: GradingMode, studentNames?: string[]) => void;
+  onSelectMode: (mode: GradingMode, studentNames?: string[], className?: string) => void;
 }
 
 export function GradingModeModal({ open, onOpenChange, onSelectMode }: GradingModeModalProps) {
   const [selectedMode, setSelectedMode] = useState<GradingMode | null>(null);
   const [studentNamesText, setStudentNamesText] = useState('');
+  const [className, setClassName] = useState('');
   const [step, setStep] = useState<'select' | 'names'>('select');
+  const [classNameTouched, setClassNameTouched] = useState(false);
 
   const handleModeSelect = (mode: GradingMode) => {
     setSelectedMode(mode);
@@ -30,13 +33,18 @@ export function GradingModeModal({ open, onOpenChange, onSelectMode }: GradingMo
   };
 
   const handleContinueWithNames = () => {
+    if (!className.trim()) {
+      setClassNameTouched(true);
+      return;
+    }
+    
     const names = studentNamesText
       .split('\n')
       .map(name => name.trim())
       .filter(name => name.length > 0);
     
     if (names.length > 0) {
-      onSelectMode('horizontal', names);
+      onSelectMode('horizontal', names, className.trim());
       resetState();
     }
   };
@@ -44,7 +52,9 @@ export function GradingModeModal({ open, onOpenChange, onSelectMode }: GradingMo
   const resetState = () => {
     setSelectedMode(null);
     setStudentNamesText('');
+    setClassName('');
     setStep('select');
+    setClassNameTouched(false);
   };
 
   const handleOpenChange = (newOpen: boolean) => {
@@ -58,6 +68,8 @@ export function GradingModeModal({ open, onOpenChange, onSelectMode }: GradingMo
     .split('\n')
     .map(name => name.trim())
     .filter(name => name.length > 0);
+
+  const isClassNameInvalid = classNameTouched && !className.trim();
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -123,6 +135,22 @@ export function GradingModeModal({ open, onOpenChange, onSelectMode }: GradingMo
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
+                <Label htmlFor="class-name">Class Name *</Label>
+                <Input
+                  id="class-name"
+                  placeholder="e.g., Math 101, Period 3..."
+                  value={className}
+                  onChange={(e) => setClassName(e.target.value)}
+                  onBlur={() => setClassNameTouched(true)}
+                  className={isClassNameInvalid ? "border-destructive" : ""}
+                  autoFocus
+                />
+                {isClassNameInvalid && (
+                  <p className="text-sm text-destructive">Please enter a class name</p>
+                )}
+              </div>
+              
+              <div className="space-y-2">
                 <Label htmlFor="student-names">Student Names</Label>
                 <Textarea
                   id="student-names"
@@ -132,8 +160,7 @@ Alex Johnson
 ..."
                   value={studentNamesText}
                   onChange={(e) => setStudentNamesText(e.target.value)}
-                  className="min-h-[200px] font-mono text-sm"
-                  autoFocus
+                  className="min-h-[160px] font-mono text-sm"
                 />
               </div>
               

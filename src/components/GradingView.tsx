@@ -373,11 +373,11 @@ export function GradingView() {
             </Card>
           </div>
 
-          {/* Main Grid */}
+          {/* Main Grid - with horizontal scrolling */}
           <div className="lg:col-span-3 space-y-4">
-            <Card className="shadow-soft">
+            <Card className="shadow-soft overflow-hidden">
               <CardContent className="p-0">
-                <ScrollArea className="w-full">
+                <ScrollArea className="w-full" orientation="horizontal">
                   <div className="min-w-max p-4">
                     <table className="w-full border-collapse">
                       <thead>

@@ -38,13 +38,13 @@ export function RubricList() {
     setShowGradingModal(true);
   };
 
-  const handleGradingModeSelect = (mode: 'vertical' | 'horizontal', studentNames?: string[]) => {
+  const handleGradingModeSelect = (mode: 'vertical' | 'horizontal', studentNames?: string[], className?: string) => {
     setShowGradingModal(false);
     if (mode === 'vertical') {
       navigate(`/grade/${selectedRubricId}`);
     } else {
-      // Navigate with student names in state
-      navigate(`/grade/${selectedRubricId}/horizontal`, { state: { studentNames } });
+      // Navigate with student names and class name in state
+      navigate(`/grade/${selectedRubricId}/horizontal`, { state: { studentNames, className } });
     }
   };
 
