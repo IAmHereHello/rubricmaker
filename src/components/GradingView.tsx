@@ -377,7 +377,7 @@ export function GradingView() {
           <div className="lg:col-span-3 space-y-4">
             <Card className="shadow-soft overflow-hidden">
               <CardContent className="p-0">
-                <ScrollArea className="w-full" orientation="horizontal">
+                <ScrollArea className="w-full whitespace-nowrap">
                   <div className="min-w-max p-4">
                     <table className="w-full border-collapse">
                       <thead>
