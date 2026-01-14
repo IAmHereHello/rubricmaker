@@ -19,6 +19,7 @@ import { CellFeedback, GradedStudent, Rubric, Threshold } from '@/types/rubric';
 interface HorizontalGradingViewProps {
   rubric: Rubric;
   initialStudentNames: string[];
+  className: string;
 }
 
 interface StudentGradingData {
@@ -28,7 +29,7 @@ interface StudentGradingData {
   generalFeedback: string;
 }
 
-export function HorizontalGradingView({ rubric, initialStudentNames }: HorizontalGradingViewProps) {
+export function HorizontalGradingView({ rubric, initialStudentNames, className }: HorizontalGradingViewProps) {
   const navigate = useNavigate();
   const { addGradedStudent, getRubricById } = useRubricStore();
   const inputRef = useRef<HTMLInputElement>(null);
