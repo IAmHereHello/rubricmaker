@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Rubric, Column, Row, CriteriaCell, Threshold, ScoringMode, GradedStudent } from '@/types/rubric';
+import { Rubric, Column, Row, CriteriaCell, Threshold, ScoringMode, GradedStudent, HorizontalGradingSessionState } from '@/types/rubric';
 
 interface RubricStore {
   rubrics: Rubric[];
   currentRubric: Partial<Rubric> | null;
+  horizontalSessions: HorizontalGradingSessionState[]; // Saved horizontal grading sessions
   
   // Actions
   setCurrentRubric: (rubric: Partial<Rubric> | null) => void;
@@ -38,6 +39,17 @@ interface RubricStore {
   // Graded students actions
   addGradedStudent: (rubricId: string, student: GradedStudent) => void;
   clearGradedStudents: (rubricId: string) => void;
+  
+  // Horizontal session actions
+  saveHorizontalSession: (session: HorizontalGradingSessionState) => void;
+  getHorizontalSession: (rubricId: string) => HorizontalGradingSessionState | undefined;
+  deleteHorizontalSession: (rubricId: string) => void;
+  
+  // Get unique class names across all rubrics
+  getUniqueClassNames: () => string[];
+  
+  // Get students by class name
+  getStudentsByClassName: (className: string) => { rubric: Rubric; students: GradedStudent[] }[];
 }
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -47,6 +59,7 @@ export const useRubricStore = create<RubricStore>()(
     (set, get) => ({
       rubrics: [],
       currentRubric: null,
+      horizontalSessions: [],
       
       setCurrentRubric: (rubric) => set({ currentRubric: rubric }),
       
@@ -62,16 +75,20 @@ export const useRubricStore = create<RubricStore>()(
         
         const now = new Date();
         const columns = currentRubric.columns || [];
+        const rows = currentRubric.rows || [];
         const scoringMode = currentRubric.scoringMode || 'discrete';
         
         // Calculate total possible points based on scoring mode
+        // Include calculation points for each row
         let totalPossiblePoints: number;
+        const calculationPointsTotal = rows.reduce((sum, row) => sum + (row.calculationPoints || 0), 0);
+        
         if (scoringMode === 'cumulative') {
-          // Cumulative: sum of all column points
-          totalPossiblePoints = columns.reduce((sum, col) => sum + col.points, 0) * (currentRubric.rows || []).length;
+          // Cumulative: sum of all column points per row
+          totalPossiblePoints = columns.reduce((sum, col) => sum + col.points, 0) * rows.length + calculationPointsTotal;
         } else {
-          // Discrete: max column points
-          totalPossiblePoints = Math.max(...columns.map(c => c.points), 0) * (currentRubric.rows || []).length;
+          // Discrete: max column points per row
+          totalPossiblePoints = Math.max(...columns.map(c => c.points), 0) * rows.length + calculationPointsTotal;
         }
         
         const existingRubric = rubrics.find(r => r.id === currentRubric.id);
@@ -80,7 +97,7 @@ export const useRubricStore = create<RubricStore>()(
           id: currentRubric.id || generateId(),
           name: currentRubric.name,
           columns: columns,
-          rows: currentRubric.rows || [],
+          rows: rows,
           criteria: currentRubric.criteria || [],
           thresholds: currentRubric.thresholds || [],
           totalPossiblePoints,
@@ -106,7 +123,8 @@ export const useRubricStore = create<RubricStore>()(
       },
       
       deleteRubric: (id) => set((state) => ({
-        rubrics: state.rubrics.filter(r => r.id !== id)
+        rubrics: state.rubrics.filter(r => r.id !== id),
+        horizontalSessions: state.horizontalSessions.filter(s => s.rubricId !== id)
       })),
       
       getRubricById: (id) => get().rubrics.find(r => r.id === id),
@@ -115,20 +133,23 @@ export const useRubricStore = create<RubricStore>()(
         const { rubrics } = get();
         const now = new Date();
         const columns = rubricData.columns || [];
+        const rows = rubricData.rows || [];
         const scoringMode = rubricData.scoringMode || 'discrete';
+        
+        const calculationPointsTotal = rows.reduce((sum, row) => sum + (row.calculationPoints || 0), 0);
         
         let totalPossiblePoints: number;
         if (scoringMode === 'cumulative') {
-          totalPossiblePoints = columns.reduce((sum, col) => sum + col.points, 0) * (rubricData.rows || []).length;
+          totalPossiblePoints = columns.reduce((sum, col) => sum + col.points, 0) * rows.length + calculationPointsTotal;
         } else {
-          totalPossiblePoints = Math.max(...columns.map(c => c.points), 0) * (rubricData.rows || []).length;
+          totalPossiblePoints = Math.max(...columns.map(c => c.points), 0) * rows.length + calculationPointsTotal;
         }
         
         const newRubric: Rubric = {
           id: generateId(),
           name: rubricData.name || 'Imported Rubric',
           columns: columns,
-          rows: rubricData.rows || [],
+          rows: rows,
           criteria: rubricData.criteria || [],
           thresholds: rubricData.thresholds || [],
           totalPossiblePoints,
@@ -255,6 +276,47 @@ export const useRubricStore = create<RubricStore>()(
             : r
         )
       })),
+      
+      saveHorizontalSession: (session) => set((state) => {
+        const existingIndex = state.horizontalSessions.findIndex(s => s.rubricId === session.rubricId);
+        if (existingIndex >= 0) {
+          return {
+            horizontalSessions: state.horizontalSessions.map((s, i) => 
+              i === existingIndex ? session : s
+            )
+          };
+        }
+        return {
+          horizontalSessions: [...state.horizontalSessions, session]
+        };
+      }),
+      
+      getHorizontalSession: (rubricId) => get().horizontalSessions.find(s => s.rubricId === rubricId),
+      
+      deleteHorizontalSession: (rubricId) => set((state) => ({
+        horizontalSessions: state.horizontalSessions.filter(s => s.rubricId !== rubricId)
+      })),
+      
+      getUniqueClassNames: () => {
+        const { rubrics } = get();
+        const classNames = new Set<string>();
+        rubrics.forEach(r => {
+          r.gradedStudents?.forEach(s => {
+            if (s.className) classNames.add(s.className);
+          });
+        });
+        return Array.from(classNames).sort();
+      },
+      
+      getStudentsByClassName: (className) => {
+        const { rubrics } = get();
+        return rubrics
+          .map(r => ({
+            rubric: r,
+            students: r.gradedStudents?.filter(s => s.className === className) || []
+          }))
+          .filter(item => item.students.length > 0);
+      },
     }),
     {
       name: 'rubric-storage',

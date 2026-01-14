@@ -3,8 +3,11 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Target, Plus, Trash2, ArrowRight, ArrowLeft, Sparkles } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Target, Plus, Trash2, ArrowRight, ArrowLeft, Sparkles, Star, Calculator } from 'lucide-react';
 import { useRubricStore } from '@/hooks/useRubricStore';
+import { cn } from '@/lib/utils';
 
 interface Step4RowsProps {
   onNext: () => void;
@@ -24,6 +27,8 @@ export function Step4Rows({ onNext, onBack }: Step4RowsProps) {
       addRow({
         id: Math.random().toString(36).substr(2, 9),
         name: newRowName.trim(),
+        isBonus: false,
+        calculationPoints: 0,
       });
       setNewRowName('');
     }
@@ -39,6 +44,8 @@ export function Step4Rows({ onNext, onBack }: Step4RowsProps) {
       const newRows = goals.map((name) => ({
         id: Math.random().toString(36).substr(2, 9),
         name,
+        isBonus: false,
+        calculationPoints: 0,
       }));
       addRows(newRows);
       setBulkInput('');
@@ -96,25 +103,61 @@ export function Step4Rows({ onNext, onBack }: Step4RowsProps) {
           {rows.map((row, index) => (
             <div
               key={row.id}
-              className="flex items-center gap-3 rounded-lg border bg-card p-3 shadow-inner-soft animate-slide-in"
+              className={cn(
+                "rounded-lg border bg-card p-3 shadow-inner-soft animate-slide-in",
+                row.isBonus && "border-amber-300 bg-amber-50/50 dark:bg-amber-950/20"
+              )}
             >
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                {index + 1}
-              </span>
-              <Input
-                value={row.name}
-                onChange={(e) => updateRow(row.id, { name: e.target.value })}
-                className="flex-1"
-                placeholder="Learning goal"
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => removeRow(row.id)}
-                className="text-muted-foreground hover:text-destructive"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-3">
+                <span className={cn(
+                  "flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold",
+                  row.isBonus ? "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" : "bg-primary/10 text-primary"
+                )}>
+                  {row.isBonus ? <Star className="h-4 w-4" /> : index + 1}
+                </span>
+                <Input
+                  value={row.name}
+                  onChange={(e) => updateRow(row.id, { name: e.target.value })}
+                  className="flex-1"
+                  placeholder="Learning goal"
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => removeRow(row.id)}
+                  className="text-muted-foreground hover:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+              
+              {/* Row Options */}
+              <div className="mt-3 flex flex-wrap items-center gap-4 pl-10">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id={`bonus-${row.id}`}
+                    checked={row.isBonus || false}
+                    onCheckedChange={(checked) => updateRow(row.id, { isBonus: checked })}
+                  />
+                  <Label htmlFor={`bonus-${row.id}`} className="text-sm cursor-pointer flex items-center gap-1">
+                    <Star className="h-3 w-3 text-amber-500" />
+                    Bonus Row
+                  </Label>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <Calculator className="h-4 w-4 text-muted-foreground" />
+                  <Label htmlFor={`calc-${row.id}`} className="text-sm">Calculation Points:</Label>
+                  <Input
+                    id={`calc-${row.id}`}
+                    type="number"
+                    min="0"
+                    value={row.calculationPoints || 0}
+                    onChange={(e) => updateRow(row.id, { calculationPoints: parseInt(e.target.value) || 0 })}
+                    className="w-20 h-8"
+                  />
+                </div>
+              </div>
             </div>
           ))}
         </div>
@@ -131,6 +174,21 @@ export function Step4Rows({ onNext, onBack }: Step4RowsProps) {
             <Plus className="mr-2 h-4 w-4" />
             Add
           </Button>
+        </div>
+
+        {/* Legend */}
+        <div className="rounded-lg bg-muted/50 p-3 text-sm space-y-2">
+          <p className="font-medium text-muted-foreground">Options explained:</p>
+          <ul className="space-y-1 text-muted-foreground">
+            <li className="flex items-start gap-2">
+              <Star className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+              <span><strong>Bonus Row:</strong> Points count toward total, but low scores won't affect threshold status.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <Calculator className="h-4 w-4 mt-0.5 shrink-0" />
+              <span><strong>Calculation Points:</strong> Extra points for correct math work (shown separately during grading).</span>
+            </li>
+          </ul>
         </div>
 
         <div className="flex gap-3 pt-4">

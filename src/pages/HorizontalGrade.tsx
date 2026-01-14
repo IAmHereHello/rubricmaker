@@ -11,7 +11,9 @@ const HorizontalGrade = () => {
   const { getRubricById } = useRubricStore();
   
   const rubric = getRubricById(rubricId || '');
-  const studentNames = (location.state as { studentNames?: string[] })?.studentNames || [];
+  const locationState = location.state as { studentNames?: string[]; className?: string } | null;
+  const studentNames = locationState?.studentNames || [];
+  const className = locationState?.className || 'Unnamed Class';
   
   if (!rubric) {
     return (
@@ -39,7 +41,7 @@ const HorizontalGrade = () => {
     );
   }
   
-  return <HorizontalGradingView rubric={rubric} initialStudentNames={studentNames} />;
+  return <HorizontalGradingView rubric={rubric} initialStudentNames={studentNames} className={className} />;
 };
 
 export default HorizontalGrade;
