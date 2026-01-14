@@ -92,6 +92,8 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
   // Time Tracking State
   const [sessionStartTime] = useState<number>(Date.now());
   const [completedStudentCount, setCompletedStudentCount] = useState(0);
+  const [sessionGradedCount, setSessionGradedCount] = useState(0);
+  const [firstStudentDuration, setFirstStudentDuration] = useState<number | null>(null);
 
   // -- Derived State --
   const isFirstRow = currentRowIndex === 0;
@@ -250,10 +252,13 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
     const { totalScore } = calculateStudentScore(studentName);
     const data = studentsData.get(studentName);
 
-    // Check if any row has the lowest column selected
+    // Check if any row has the lowest column selected (excluding bonus rows)
     const lowestColumnId = rubric.columns[0]?.id;
     const hasLowestColumnSelected = data
-      ? Object.values(data.selections).some(colId => colId === lowestColumnId)
+      ? rubric.rows.some(row => {
+        if (row.isBonus) return false; // Ignore bonus rows
+        return data.selections[row.id] === lowestColumnId;
+      })
       : false;
 
     const sortedThresholds = [...rubric.thresholds].sort((a, b) => b.min - a.min);
@@ -317,6 +322,12 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
 
     // Track Progress
     setCompletedStudentCount(prev => prev + 1);
+
+    // Time Tracking Update
+    if (sessionGradedCount === 0) {
+      setFirstStudentDuration(Date.now() - sessionStartTime);
+    }
+    setSessionGradedCount(prev => prev + 1);
 
     // If first row, add to student order
     if (isFirstRow) {
@@ -408,12 +419,46 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
   const studentsGradedThisRow = isFirstRow ? studentOrder.length : currentStudentIndex;
   const rowProgress = totalStudents > 0 ? ((studentsGradedThisRow) / totalStudents) * 100 : 0;
 
-  // Average Time Calc
+  // Average Time Calc (Excluding first student of the session)
   const avgTimePerStudent = useMemo(() => {
-    if (completedStudentCount === 0) return 0;
-    const elapsedSecs = (Date.now() - sessionStartTime) / 1000;
-    return Math.round(elapsedSecs / completedStudentCount);
-  }, [completedStudentCount, sessionStartTime]);
+    // We need at least 2 students graded in this session to have a meaningful "average of others"
+    if (sessionGradedCount <= 1) {
+      // Fallback: if we have 1, use that (provisional), else 0
+      if (sessionGradedCount === 1 && firstStudentDuration) return Math.round(firstStudentDuration / 1000);
+      return 0;
+    }
+
+    const totalElapsed = Date.now() - sessionStartTime;
+    const timeOnOthers = totalElapsed - (firstStudentDuration || 0);
+    const countOthers = sessionGradedCount - 1;
+
+    return Math.max(0, Math.round((timeOnOthers / 1000) / countOthers));
+  }, [sessionGradedCount, sessionStartTime, firstStudentDuration]);
+
+  // Estimated Time Remaining
+  // Formula: (AvgTimePerRow * RowsLeft) + (AvgTimePerStudent * StudentsLeftInRow)
+  const estimatedTimeRemaining = useMemo(() => {
+    if (avgTimePerStudent === 0) return null;
+
+    const totalStudents = isFirstRow ? initialStudentNames.length : studentOrder.length;
+    const studentsLeftInRow = totalStudents - studentsGradedThisRow;
+    const rowsLeft = rubric.rows.length - currentRowIndex - 1;
+
+    // AvgTimePerRow = AvgTimePerStudent * TotalStudentsInRow
+    // We assume AvgTimePerStudent is actually "Avg Time Per Cell" (Student-Row combination)
+    const avgTimePerRow = avgTimePerStudent * totalStudents;
+
+    const timeForCurrentRow = avgTimePerStudent * studentsLeftInRow;
+    const timeForFutureRows = avgTimePerRow * rowsLeft;
+
+    const totalSecondsLeft = timeForCurrentRow + timeForFutureRows;
+
+    if (totalSecondsLeft <= 0) return 'Almost done';
+
+    const m = Math.floor(totalSecondsLeft / 60);
+    const s = Math.round(totalSecondsLeft % 60);
+    return `${m}m ${s}s`;
+  }, [avgTimePerStudent, isFirstRow, initialStudentNames.length, studentOrder.length, studentsGradedThisRow, rubric.rows.length, currentRowIndex]);
 
 
   const getCriteriaValue = (rowId: string, columnId: string) => {
@@ -466,6 +511,9 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
                   <span>{completedCells} of {totalCells} cells</span>
                   {avgTimePerStudent > 0 && (
                     <span className="text-primary font-medium">~{avgTimePerStudent}s / student</span>
+                  )}
+                  {estimatedTimeRemaining && (
+                    <span className="text-muted-foreground ml-2">({estimatedTimeRemaining} left)</span>
                   )}
                 </span>
               </div>

@@ -8,16 +8,27 @@ import { ImportExportSection } from '@/components/ImportExportSection';
 import { GradingModeModal } from '@/components/GradingModeModal';
 import { Plus, ClipboardList, Trash2, GraduationCap, Edit, Users } from 'lucide-react';
 import { format } from 'date-fns';
-import { Rubric } from '@/types/rubric';
+import { Rubric, RubricType } from '@/types/rubric';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { FileText, ClipboardCheck } from 'lucide-react';
+
 
 export function RubricList() {
   const navigate = useNavigate();
   const { rubrics, deleteRubric, setCurrentRubric } = useRubricStore();
   const [showGradingModal, setShowGradingModal] = useState(false);
+  const [showTypeModal, setShowTypeModal] = useState(false);
   const [selectedRubricId, setSelectedRubricId] = useState<string | null>(null);
 
-  const handleCreateNew = () => {
+  const handleCreateClick = () => {
+    setShowTypeModal(true);
+  };
+
+  const handleCreateConfirm = (type: RubricType) => {
+    setShowTypeModal(false);
     setCurrentRubric({
+      type,
+      name: '',
       columns: [],
       rows: [],
       criteria: [],
@@ -57,7 +68,7 @@ export function RubricList() {
             Create and manage assessment rubrics
           </p>
         </div>
-        <Button onClick={handleCreateNew} size="lg" className="gap-2">
+        <Button onClick={handleCreateClick} size="lg" className="gap-2">
           <Plus className="h-5 w-5" />
           Create Rubric
         </Button>
@@ -76,7 +87,7 @@ export function RubricList() {
             <p className="text-muted-foreground text-center max-w-sm mb-6">
               Create your first rubric to start assessing student work with consistent criteria.
             </p>
-            <Button onClick={handleCreateNew} className="gap-2">
+            <Button onClick={handleCreateClick} className="gap-2">
               <Plus className="h-4 w-4" />
               Create Your First Rubric
             </Button>
@@ -97,6 +108,17 @@ export function RubricList() {
                       <CardDescription className="mt-1">
                         {rubric.rows.length} goals · {rubric.columns.length} levels
                       </CardDescription>
+                      <div className="flex gap-2 mt-1">
+                        {rubric.type === 'exam' ? (
+                          <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80">
+                            Exam
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-primary/10 text-primary hover:bg-primary/20">
+                            Assignment
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <Button
                       variant="ghost"
@@ -152,6 +174,49 @@ export function RubricList() {
         onOpenChange={setShowGradingModal}
         onSelectMode={handleGradingModeSelect}
       />
+
+      {/* Type Selection Modal */}
+      <Dialog open={showTypeModal} onOpenChange={setShowTypeModal}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Select Assessment Type</DialogTitle>
+            <DialogDescription>
+              Choose the format that best fits your needs.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
+            <Card
+              className="cursor-pointer hover:border-primary transition-colors hover:bg-accent/50"
+              onClick={() => handleCreateConfirm('assignment')}
+            >
+              <CardHeader>
+                <div className="p-3 bg-primary/10 rounded-full w-fit mb-2">
+                  <ClipboardList className="h-6 w-6 text-primary" />
+                </div>
+                <CardTitle className="text-lg">Assignment</CardTitle>
+                <CardDescription>
+                  Standard rubric with rows (goals) and columns (levels). Best for big projects and skill mastery.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+
+            <Card
+              className="cursor-pointer hover:border-primary transition-colors hover:bg-accent/50"
+              onClick={() => handleCreateConfirm('exam')}
+            >
+              <CardHeader>
+                <div className="p-3 bg-secondary rounded-full w-fit mb-2">
+                  <ClipboardCheck className="h-6 w-6 text-foreground" />
+                </div>
+                <CardTitle className="text-lg">Test / Exam</CardTitle>
+                <CardDescription>
+                  Point-based questions grouped by learning goals. Best for exams and structured tests.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

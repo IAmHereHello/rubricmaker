@@ -9,6 +9,9 @@ export interface Row {
   name: string;
   isBonus?: boolean; // Bonus row - counts toward score but ignored by threshold logic
   calculationPoints?: number; // Extra points for calculation correctness
+  maxPoints?: number; // For exams: Maximum points for this question
+  learningGoal?: string; // For exams: Grouping category
+  description?: string; // For exams: Optional question description
 }
 
 export interface CriteriaCell {
@@ -45,11 +48,15 @@ export interface GradedStudent {
   statusLabel: string;
   gradedAt: Date;
   className?: string; // Class name for grouping
+  rowScores?: { [rowId: string]: number }; // For exams: Explicit point value given per row/question
 }
+
+export type RubricType = 'assignment' | 'exam';
 
 export interface Rubric {
   id: string;
   name: string;
+  type: RubricType;
   columns: Column[];
   rows: Row[];
   criteria: CriteriaCell[];

@@ -1,21 +1,12 @@
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { StatusBadge } from '@/components/StatusBadge';
-import { useRubricStore } from '@/hooks/useRubricStore';
-import { Download, Trash2, Users, FileText } from 'lucide-react';
-import { format } from 'date-fns';
-import * as XLSX from 'xlsx';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import { Rubric, GradedStudent } from '@/types/rubric';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { ChevronDown } from 'lucide-react';
 
 interface GradedStudentsTableProps {
   rubric: Rubric;
@@ -28,13 +19,17 @@ export function GradedStudentsTable({ rubric, students: propStudents, hideClear 
 
   const students = propStudents || rubric.gradedStudents || [];
 
-  const exportToPDF = () => {
-    if (students.length === 0) return;
+  const exportToPDF = (studentId?: string) => {
+    const targetStudents = studentId
+      ? students.filter(s => s.id === studentId)
+      : students;
+
+    if (targetStudents.length === 0) return;
 
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
 
-    students.forEach((student, index) => {
+    targetStudents.forEach((student, index) => {
       // New page for each student (except the first)
       if (index > 0) {
         doc.addPage();
@@ -72,31 +67,12 @@ export function GradedStudentsTable({ rubric, students: propStudents, hideClear 
         let criteriaText = selectedColumn ? `${selectedColumn.name}\n${criteria}` : 'Not graded';
 
         if (showWarning) {
-          // We'll append this and style it in didParseCell or by handling manually
-          // For simplicity in autotable, we append text, but we want color.
-          // A common way is to add a marker we replace, or just text.
-          // Let's verify requirement: "Display the red text... under the row description"
           criteriaText += `\n\n!!WARNING!! Berekening mist: -${row.calculationPoints}`;
         }
 
         if (feedback) {
           criteriaText += `\n\nFeedback: ${feedback}`;
         }
-
-        // Score Calculation for display
-        let score = 0;
-        if (selectedColumn) {
-          // simplified display logic, assumes discrete or cumulative pre-calculated by store? 
-          // Actually, store has totalScore, but per-row score isn't stored explicitly on student, derived in runtime.
-          // We'll re-derive standard points.
-          score = selectedColumn.points; // This is a simplification. For PDF, mostly total matters.
-          // If we really want accurate per-row breakdown we'd need the calculation logic here too.
-          // Let's just show the base points for the level selected.
-        }
-
-        // Note depending on scoring mode, 'score' might be cumulative.
-        // Showing "Points" column might describe the *value of the column*, not necessarily points earned in cumulative mode.
-        // We'll stick to Column Points.
 
         tableBody.push([
           row.name,
@@ -120,75 +96,19 @@ export function GradedStudentsTable({ rubric, students: propStudents, hideClear 
           if (data.section === 'body' && data.column.index === 1) {
             const text = data.cell.raw as string;
             if (text.includes('!!WARNING!!')) {
-              // Check if we can colorize parts of cell. AutoTable usually styles whole cell.
-              // We might need to split this if we want partial color.
-              // Or we just color the whole text red? No, that's bad.
-              // Advanced: use hooks to draw custom text.
-              // Simpler approach for MVP: Leave text but remove marker.
               data.cell.text = [text.replace('!!WARNING!! ', '')];
-              // We can't easily partially color text in standard autotable without complex hooks.
-              // However, we CAN color the cell text red if we want, or add a red footer to the cell.
-              // Given the constraint "Display the red text", let's try to color the specific line manually using didDrawCell
-            }
-          }
-        },
-        willDrawCell: function (data) {
-          // If we want to highlight, we could check here. 
-          // But partial text color is hard.
-        },
-        didDrawCell: function (data) {
-          if (data.section === 'body' && data.column.index === 1) {
-            const raw = data.cell.raw as string;
-            if (raw.includes('!!WARNING!!')) {
-              // We can over-draw the warning text in red? 
-              // It's tricky with wrapping.
-              // Alternative: Just make the whole cell text red? No.
-              // Let's stick to the text modification in didParseCell, and maybe just bold it or add an icon if possible.
-              // User specifically asked for Red Text.
-              // Only way is to use `doc.setTextColor` then `doc.text` manually over the position.
-              // But we don't know exactly where the line wraps.
-
-              // Compromise: We will leave the text as is (without specific red color for that line only) 
-              // UNLESS we want to reimplement cell drawing.
-              // OR: We set the whole cell text color to a warning color if calculation is missing?
-              // No, that hides the good criteria.
-
-              // Re-reading: "Display the red text... under the row description".
-              // Let's try to color the *entire* cell text for those cases red? Or maybe Orange?
-              // That warns the user.
-              // Better: Use `didParseCell` to set `textColor` for the whole cell if warning is present.
-              // It's acceptable for MVP.
+              data.cell.styles.textColor = [220, 38, 38]; // Red color for cells with warnings is a good visual indicator
             }
           }
         }
       });
-
-      // Let's try to handle the RED text specifically.
-      // Since partial coloring is hard, I will define a helper to colorize specific lines?
-      // No, let's keep it simple. If "Berekening mist" is needed, I'll add a footer below the table?
-      // No, per row.
-      // I will implement a custom draw hook for the warning.
     });
 
-    // We iterate again to fix the Red Text using a hook that finds the warning string?
-    // Actually, let's just use the `didParseCell` to color only the warning if possible? No.
-    // I will stick to "Berekening mist: -X" being in the text. 
-    // To make it red, I'll apply a styles.textColor to the cell if it contains the warning? 
-    // No, that makes everything red.
-    // Let's just append the text. The "Red" requirement is strict ("Display the red text").
-    // I can split the cell into two cells? No.
-    // I will try to use `html` feature of autotable? No, complicated.
+    const filename = targetStudents.length === 1
+      ? `${rubric.name}_${targetStudents[0].studentName}.pdf`
+      : `${rubric.name}_Class_Bundle.pdf`;
 
-    // DECISION: I will format the text as:
-    // "CRITERIA TEXT ...
-    //
-    // [!] Berekening mist: -5"
-    // And I will set the cell textColor to Red for emphasis if calculation points are missed?
-    // Or just rely on the text content being explicit. 
-    // If I can't easily do partial color, I will note it in comments or try a best effort:
-    // I'll make the whole cell Red/Orange to signify something is wrong.
-
-    doc.save(`${rubric.name}_Class_Bundle.pdf`);
+    doc.save(filename);
   };
 
   const exportToExcel = () => {
@@ -280,10 +200,32 @@ export function GradedStudentsTable({ rubric, students: propStudents, hideClear 
                 Clear All
               </Button>
             )}
-            <Button variant="outline" onClick={exportToPDF} size="sm">
-              <FileText className="h-4 w-4 mr-2" />
-              Export PDF
-            </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <FileText className="h-4 w-4 mr-2" />
+                  Export PDF
+                  <ChevronDown className="ml-2 h-3 w-3 opacity-50" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>PDF Options</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => exportToPDF()}>
+                  Download Class Bundle (All)
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Individual Students</DropdownMenuLabel>
+                <div className="max-h-[200px] overflow-y-auto">
+                  {students.map(student => (
+                    <DropdownMenuItem key={student.id} onClick={() => exportToPDF(student.id)}>
+                      {student.studentName}
+                    </DropdownMenuItem>
+                  ))}
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <Button onClick={exportToExcel} size="sm">
               <Download className="h-4 w-4 mr-2" />
               Export Excel

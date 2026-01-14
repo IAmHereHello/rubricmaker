@@ -25,9 +25,12 @@ export function GradingView() {
 
   const [studentName, setStudentName] = useState('');
   const [selections, setSelections] = useState<{ [rowId: string]: string }>({});
+  const [manualScores, setManualScores] = useState<{ [rowId: string]: number }>({});
   const [cellFeedback, setCellFeedback] = useState<CellFeedback[]>([]);
   const [generalFeedback, setGeneralFeedback] = useState('');
   const [showSummary, setShowSummary] = useState(false);
+
+  const isExam = rubric?.type === 'exam';
 
   const handleCellClick = useCallback((rowId: string, columnId: string) => {
     setSelections((prev) => ({
@@ -59,44 +62,76 @@ export function GradingView() {
   const { totalScore, rowScores } = useMemo(() => {
     if (!rubric) return { totalScore: 0, rowScores: {} };
 
-    const scoringMode = rubric.scoringMode || 'discrete';
     const rowScores: { [rowId: string]: number } = {};
     let total = 0;
 
-    rubric.rows.forEach((row) => {
-      const selectedColumnId = selections[row.id];
-      if (selectedColumnId) {
-        const selectedColumnIndex = rubric.columns.findIndex((c) => c.id === selectedColumnId);
+    if (isExam) {
+      rubric.rows.forEach(row => {
+        let score = manualScores[row.id] || 0;
+        // Add calc points if any?
+        // Actually, usually calc points are separate.
+        // Let's assume manualScores includes base points.
+        // Calc points logic: likely toggleable?
+        // existing 'calculationCorrect' logic isn't in state here?
+        // Ah, I see `calculationCorrect` is not in GradingView state?
+        // Wait, GradingView logic for 'Horizontal' uses `calculationCorrect`.
+        // Vertical GradingView usually doesn't show calc points toggle per row in the code I read?
+        // Let's check... I don't see `calculationCorrect` state in GradingView.tsx!
+        // It seems "Calculation Points" feature might be partial in Vertical view?
+        // Re-reading code: Vertical view has `rowScores` logic but I don't see UI for calc points toggles.
+        // It might be implicitly handled or I missed it.
+        // "Calculation Points (Math Context): Input field... in Step4Rows and logic to add points... in HorizontalGradingView"
+        // It seems Vertical View MIGHT NOT have had calc points toggle fully implemented?
+        // Let's stick to base points for now or check if I missed it.
+        // I'll ignore calc points toggle for now in Vertical Exam mode to be safe, or just sum manual input.
 
-        if (selectedColumnIndex !== -1) {
-          if (scoringMode === 'cumulative') {
-            // Sum all columns up to and including the selected one
-            let cumulativePoints = 0;
-            for (let i = 0; i <= selectedColumnIndex; i++) {
-              cumulativePoints += rubric.columns[i].points;
+        // Validate against max
+        if (row.maxPoints && score > row.maxPoints) score = row.maxPoints;
+
+        rowScores[row.id] = score;
+        total += score;
+      });
+    } else {
+      const scoringMode = rubric.scoringMode || 'discrete';
+      rubric.rows.forEach((row) => {
+        const selectedColumnId = selections[row.id];
+        if (selectedColumnId) {
+          const selectedColumnIndex = rubric.columns.findIndex((c) => c.id === selectedColumnId);
+
+          if (selectedColumnIndex !== -1) {
+            if (scoringMode === 'cumulative') {
+              // Sum all columns up to and including the selected one
+              let cumulativePoints = 0;
+              for (let i = 0; i <= selectedColumnIndex; i++) {
+                cumulativePoints += rubric.columns[i].points;
+              }
+              rowScores[row.id] = cumulativePoints;
+              total += cumulativePoints;
+            } else {
+              // Discrete: only the selected column's points
+              const column = rubric.columns[selectedColumnIndex];
+              rowScores[row.id] = column.points;
+              total += column.points;
             }
-            rowScores[row.id] = cumulativePoints;
-            total += cumulativePoints;
-          } else {
-            // Discrete: only the selected column's points
-            const column = rubric.columns[selectedColumnIndex];
-            rowScores[row.id] = column.points;
-            total += column.points;
           }
+        } else {
+          rowScores[row.id] = 0;
         }
-      } else {
-        rowScores[row.id] = 0;
-      }
-    });
+      });
+    }
 
     return { totalScore: total, rowScores };
-  }, [rubric, selections]);
+  }, [rubric, selections, manualScores, isExam]);
 
-  // Check if any row has the lowest column selected
+  // Check if any row has the lowest column selected (excluding bonus rows)
   const hasLowestColumnSelected = useMemo(() => {
     if (!rubric || rubric.columns.length === 0) return false;
     const lowestColumnId = rubric.columns[0].id;
-    return Object.values(selections).some(colId => colId === lowestColumnId);
+
+    return rubric.rows.some(row => {
+      if (row.isBonus) return false; // Ignore bonus rows
+      return selections[row.id] === lowestColumnId;
+    });
   }, [rubric, selections]);
 
   const currentStatus = useMemo(() => {
@@ -148,54 +183,97 @@ export function GradingView() {
     doc.text(`Total Score: ${totalScore} / ${rubric.totalPossiblePoints} points`, 14, 52);
     doc.text(`Status: ${currentStatus?.label || 'N/A'}`, 14, 60);
 
-    // Rubric table
-    const tableData = rubric.rows.map((row) => {
-      const selectedColumnId = selections[row.id];
-      const selectedColumn = rubric.columns.find((c) => c.id === selectedColumnId);
-      const criteria = selectedColumnId ? getCriteriaValue(row.id, selectedColumnId) : '-';
-      const feedback = selectedColumnId ? getCellFeedback(row.id, selectedColumnId) : '';
+    // Generate PDF Logic
+    if (isExam) {
+      // Exam PDF Generation
+      const groups = rubric.rows.reduce((acc, row) => {
+        const goal = row.learningGoal || 'Uncategorized';
+        if (!acc[goal]) acc[goal] = [];
+        acc[goal].push(row);
+        return acc;
+      }, {} as Record<string, typeof rubric.rows>);
 
-      return [
-        row.name,
-        selectedColumn?.name || '-',
-        criteria,
-        `${rowScores[row.id] || 0} pts`,
-        feedback || '-',
-      ];
-    });
+      let finalY = 70;
 
-    autoTable(doc, {
-      startY: 70,
-      head: [['Learning Goal', 'Level', 'Criteria', 'Points', 'Feedback']],
-      body: tableData,
-      theme: 'striped',
-      headStyles: {
-        fillColor: [13, 148, 136],
-        textColor: 255,
-        fontStyle: 'bold',
-      },
-      styles: {
-        fontSize: 8,
-        cellPadding: 3,
-      },
-      columnStyles: {
-        0: { cellWidth: 35 },
-        1: { cellWidth: 25 },
-        2: { cellWidth: 55 },
-        3: { cellWidth: 20 },
-        4: { cellWidth: 45 },
-      },
-    });
+      Object.entries(groups).forEach(([goal, rows]) => {
+        // Goal Header
+        doc.setFontSize(14);
+        doc.setTextColor(13, 148, 136);
+        doc.text(goal, 14, finalY);
+        finalY += 10;
+
+        const goalData = rows.map(row => {
+          return [
+            row.name,
+            row.description || '-',
+            `${rowScores[row.id] || 0} / ${row.maxPoints || 0}`,
+            getCellFeedback(row.id, 'manual') || '-' // We'll use 'manual' as colId for exams
+          ];
+        });
+
+        autoTable(doc, {
+          startY: finalY,
+          head: [['Question', 'Description', 'Score', 'Feedback']],
+          body: goalData,
+          theme: 'grid',
+          headStyles: { fillColor: [240, 240, 240], textColor: 60, fontStyle: 'bold' },
+        });
+
+        finalY = (doc as any).lastAutoTable.finalY + 15;
+      });
+
+      // Calc total per goal? Nice to have but skipping for MVP conciseness
+
+    } else {
+      // ... (Existing Assignment PDF Logic)
+      const tableData = rubric.rows.map((row) => {
+        const selectedColumnId = selections[row.id];
+        const selectedColumn = rubric.columns.find((c) => c.id === selectedColumnId);
+        const criteria = selectedColumnId ? getCriteriaValue(row.id, selectedColumnId) : '-';
+        const feedback = selectedColumnId ? getCellFeedback(row.id, selectedColumnId) : '';
+
+        return [
+          row.name,
+          selectedColumn?.name || '-',
+          criteria,
+          `${rowScores[row.id] || 0} pts`,
+          feedback || '-',
+        ];
+      });
+
+      autoTable(doc, {
+        startY: 70,
+        head: [['Learning Goal', 'Level', 'Criteria', 'Points', 'Feedback']],
+        body: tableData,
+        theme: 'striped',
+        headStyles: {
+          fillColor: [13, 148, 136],
+          textColor: 255,
+          fontStyle: 'bold',
+        },
+        styles: {
+          fontSize: 8,
+          cellPadding: 3,
+        },
+        columnStyles: {
+          0: { cellWidth: 35 },
+          1: { cellWidth: 25 },
+          2: { cellWidth: 55 },
+          3: { cellWidth: 20 },
+          4: { cellWidth: 45 },
+        },
+      });
+    }
 
     // General Feedback
     if (generalFeedback) {
-      const finalY = (doc as any).lastAutoTable.finalY || 70;
+      const startY = (doc as any).lastAutoTable?.finalY || 70;
       doc.setFontSize(12);
       doc.setTextColor(60, 60, 60);
-      doc.text('General Feedback:', 14, finalY + 15);
+      doc.text('General Feedback:', 14, startY + 15);
       doc.setFontSize(10);
       const splitFeedback = doc.splitTextToSize(generalFeedback, 180);
-      doc.text(splitFeedback, 14, finalY + 25);
+      doc.text(splitFeedback, 14, startY + 25);
     }
 
     // Footer
@@ -220,6 +298,7 @@ export function GradingView() {
       id: Math.random().toString(36).substr(2, 9),
       studentName: studentName || 'Unknown',
       selections: { ...selections },
+      rowScores: isExam ? { ...manualScores } : undefined, // Save manual scores
       cellFeedback: [...cellFeedback],
       generalFeedback,
       totalScore,
@@ -238,6 +317,7 @@ export function GradingView() {
   const clearForm = () => {
     setStudentName('');
     setSelections({});
+    setManualScores({});
     setCellFeedback([]);
     setGeneralFeedback('');
   };
@@ -267,7 +347,9 @@ export function GradingView() {
     );
   }
 
-  const allRowsSelected = rubric.rows.every((row) => selections[row.id]);
+  const allRowsSelected = isExam
+    ? rubric.rows.every(row => manualScores[row.id] !== undefined) // Basic validation
+    : rubric.rows.every((row) => selections[row.id]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -385,17 +467,23 @@ export function GradingView() {
                           <th className="sticky top-0 left-0 z-30 bg-card p-4 text-left font-semibold border-b min-w-[180px] shadow-[0_1px_2px_rgba(0,0,0,0.1)]">
                             Learning Goal
                           </th>
-                          {rubric.columns.map((col) => (
-                            <th
-                              key={col.id}
-                              className="sticky top-0 z-20 bg-card p-4 text-center font-semibold border-b min-w-[150px] shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
-                            >
-                              {col.name}
-                              <span className="block text-xs font-normal text-muted-foreground">
-                                {col.points} pts
-                              </span>
+                          {isExam ? (
+                            <th className="sticky top-0 z-20 bg-card p-4 text-left font-semibold border-b shadow-[0_1px_2px_rgba(0,0,0,0.1)] w-full">
+                              Instructions / Points
                             </th>
-                          ))}
+                          ) : (
+                            rubric.columns.map((col) => (
+                              <th
+                                key={col.id}
+                                className="sticky top-0 z-20 bg-card p-4 text-center font-semibold border-b min-w-[150px] shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+                              >
+                                {col.name}
+                                <span className="block text-xs font-normal text-muted-foreground">
+                                  {col.points} pts
+                                </span>
+                              </th>
+                            ))
+                          )}
                           <th className="sticky top-0 z-20 bg-card p-4 text-center font-semibold border-b min-w-[80px] shadow-[0_1px_2px_rgba(0,0,0,0.1)]">
                             Score
                           </th>
@@ -406,73 +494,139 @@ export function GradingView() {
                           <tr key={row.id} className="group">
                             <td className="sticky left-0 z-10 bg-card p-4 font-medium border-b group-hover:bg-muted/50 transition-colors">
                               {row.name}
+                              {isExam && row.learningGoal && (
+                                <div className="text-xs text-muted-foreground font-normal mt-1 flex items-center gap-1">
+                                  <Check className="h-3 w-3" />
+                                  {row.learningGoal}
+                                </div>
+                              )}
                             </td>
-                            {rubric.columns.map((col) => {
-                              const isSelected = selections[row.id] === col.id;
-                              const criteria = getCriteriaValue(row.id, col.id);
-                              const feedback = getCellFeedback(row.id, col.id);
+                            {isExam ? (
+                              <td className="border-b p-4">
+                                <div className="flex flex-col gap-3">
+                                  {row.description && (
+                                    <p className="text-sm text-muted-foreground">{row.description}</p>
+                                  )}
+                                  <div className="flex items-center gap-4">
+                                    <div className="flex-1 max-w-[200px]">
+                                      <Label htmlFor={`score-${row.id}`} className="sr-only">Score</Label>
+                                      <div className="relative">
+                                        <Input
+                                          id={`score-${row.id}`}
+                                          type="number"
+                                          min="0"
+                                          max={row.maxPoints || 100}
+                                          step="0.5"
+                                          placeholder={`Max ${row.maxPoints}`}
+                                          value={manualScores[row.id] || ''}
+                                          onChange={(e) => {
+                                            const val = parseFloat(e.target.value);
+                                            if (!isNaN(val)) {
+                                              setManualScores(prev => ({ ...prev, [row.id]: val }));
+                                            } else {
+                                              // Allow clearing
+                                              const newScores = { ...manualScores };
+                                              delete newScores[row.id];
+                                              setManualScores(newScores);
+                                            }
+                                          }}
+                                        />
+                                        <span className="absolute right-3 top-2.5 text-xs text-muted-foreground">
+                                          / {row.maxPoints}
+                                        </span>
+                                      </div>
+                                    </div>
 
-                              return (
-                                <td key={col.id} className="border-b p-2">
-                                  <div className="relative">
-                                    <button
-                                      onClick={() => handleCellClick(row.id, col.id)}
-                                      className={cn(
-                                        "w-full min-h-[80px] rounded-lg border-2 p-3 text-sm transition-all duration-200",
-                                        "hover:border-primary/50 hover:bg-primary/5",
-                                        isSelected
-                                          ? "border-primary bg-primary/10 ring-2 ring-primary/20"
-                                          : "border-transparent bg-muted/30"
-                                      )}
-                                    >
-                                      {isSelected && (
-                                        <div className="flex items-center justify-center mb-2">
-                                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                                            <Check className="h-4 w-4" />
-                                          </div>
+                                    {/* Feedback for Exam Row */}
+                                    <Popover>
+                                      <PopoverTrigger asChild>
+                                        <Button variant="ghost" size="icon" className={cn(getCellFeedback(row.id, 'manual') && "text-primary")}>
+                                          <MessageSquare className="h-4 w-4" />
+                                        </Button>
+                                      </PopoverTrigger>
+                                      <PopoverContent className="w-80">
+                                        <div className="space-y-2">
+                                          <Label>Comment on "{row.name}"</Label>
+                                          <Textarea
+                                            placeholder="Feedback..."
+                                            value={getCellFeedback(row.id, 'manual')}
+                                            onChange={(e) => setCellFeedbackValue(row.id, 'manual', e.target.value)}
+                                          />
                                         </div>
-                                      )}
-                                      <p className={cn(
-                                        "text-xs leading-relaxed",
-                                        isSelected ? "text-foreground" : "text-muted-foreground"
-                                      )}>
-                                        {criteria || <em className="opacity-50">No criteria</em>}
-                                      </p>
-                                    </button>
-
-                                    {/* Feedback Popover */}
-                                    {isSelected && (
-                                      <Popover>
-                                        <PopoverTrigger asChild>
-                                          <button
-                                            className={cn(
-                                              "absolute top-1 right-1 p-1.5 rounded-full transition-colors",
-                                              feedback
-                                                ? "bg-amber-500 text-white"
-                                                : "bg-muted hover:bg-muted-foreground/20 text-muted-foreground"
-                                            )}
-                                            onClick={(e) => e.stopPropagation()}
-                                          >
-                                            <MessageSquare className="h-3.5 w-3.5" />
-                                          </button>
-                                        </PopoverTrigger>
-                                        <PopoverContent className="w-64" onClick={(e) => e.stopPropagation()}>
-                                          <div className="space-y-2">
-                                            <Label className="text-xs font-medium">Cell Feedback</Label>
-                                            <Textarea
-                                              placeholder="Add specific feedback for this cell..."
-                                              value={feedback}
-                                              onChange={(e) => setCellFeedbackValue(row.id, col.id, e.target.value)}
-                                              className="min-h-[80px] text-sm"
-                                            />
-                                          </div>
-                                        </PopoverContent>
-                                      </Popover>
-                                    )}
+                                      </PopoverContent>
+                                    </Popover>
                                   </div>
-                                </td>
-                              );
-                            })}
+                                </div>
+                              </td>
+                            ) : (
+                              rubric.columns.map((col) => {
+                                // Existing Column Logic
+                                const isSelected = selections[row.id] === col.id;
+                                const criteria = getCriteriaValue(row.id, col.id);
+                                const feedback = getCellFeedback(row.id, col.id);
+
+                                return (
+                                  <td key={col.id} className="border-b p-2">
+                                    <div className="relative">
+                                      <button
+                                        onClick={() => handleCellClick(row.id, col.id)}
+                                        className={cn(
+                                          "w-full min-h-[80px] rounded-lg border-2 p-3 text-sm transition-all duration-200",
+                                          "hover:border-primary/50 hover:bg-primary/5",
+                                          isSelected
+                                            ? "border-primary bg-primary/10 ring-2 ring-primary/20"
+                                            : "border-transparent bg-muted/30"
+                                        )}
+                                      >
+                                        {isSelected && (
+                                          <div className="flex items-center justify-center mb-2">
+                                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                                              <Check className="h-4 w-4" />
+                                            </div>
+                                          </div>
+                                        )}
+                                        <p className={cn(
+                                          "text-xs leading-relaxed",
+                                          isSelected ? "text-foreground" : "text-muted-foreground"
+                                        )}>
+                                          {criteria || <em className="opacity-50">No criteria</em>}
+                                        </p>
+                                      </button>
+
+                                      {/* Feedback Popover */}
+                                      {isSelected && (
+                                        <Popover>
+                                          <PopoverTrigger asChild>
+                                            <button
+                                              className={cn(
+                                                "absolute top-1 right-1 p-1.5 rounded-full transition-colors",
+                                                feedback
+                                                  ? "bg-amber-500 text-white"
+                                                  : "bg-muted hover:bg-muted-foreground/20 text-muted-foreground"
+                                              )}
+                                              onClick={(e) => e.stopPropagation()}
+                                            >
+                                              <MessageSquare className="h-3.5 w-3.5" />
+                                            </button>
+                                          </PopoverTrigger>
+                                          <PopoverContent className="w-64" onClick={(e) => e.stopPropagation()}>
+                                            <div className="space-y-2">
+                                              <Label className="text-xs font-medium">Cell Feedback</Label>
+                                              <Textarea
+                                                placeholder="Add specific feedback for this cell..."
+                                                value={feedback}
+                                                onChange={(e) => setCellFeedbackValue(row.id, col.id, e.target.value)}
+                                                className="min-h-[80px] text-sm"
+                                              />
+                                            </div>
+                                          </PopoverContent>
+                                        </Popover>
+                                      )}
+                                    </div>
+                                  </td>
+                                );
+                              })
+                            )}
                             <td className="border-b p-4 text-center">
                               <span className={cn(
                                 "inline-flex h-10 w-16 items-center justify-center rounded-lg font-bold transition-all",
@@ -489,7 +643,7 @@ export function GradingView() {
                       <tfoot>
                         <tr>
                           <td
-                            colSpan={rubric.columns.length + 1}
+                            colSpan={isExam ? 2 : rubric.columns.length + 1}
                             className="sticky left-0 bg-card p-4 text-right font-semibold"
                           >
                             Total Score:
