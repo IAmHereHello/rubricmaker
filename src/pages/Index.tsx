@@ -1,7 +1,70 @@
+import { useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { RubricList } from '@/components/RubricList';
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList, Upload } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { importGradingSession } from '@/lib/excel-state';
+import { useToast } from '@/components/ui/use-toast';
+import { useRubricStore } from '@/hooks/useRubricStore';
 
 const Index = () => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const { getRubricById } = useRubricStore();
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const data = await importGradingSession(file);
+      if (data) {
+        const { sessionState, initialStudentNames, className } = data;
+        const rubricId = sessionState.rubricId;
+
+        // Validate Rubric
+        const rubric = getRubricById(rubricId);
+        if (!rubric) {
+          toast({
+            variant: "destructive",
+            title: "Rubric Not Found",
+            description: "The rubric used in this session (ID: " + rubricId + ") was not found in your local collection."
+          });
+          return;
+        }
+
+        // Save to LocalStorage
+        const storageKey = `rubric-grading-session-${rubricId}`;
+        localStorage.setItem(storageKey, JSON.stringify(sessionState));
+
+        // Navigate
+        toast({
+          title: "Session Loaded",
+          description: "Resuming grading session...",
+        });
+
+        navigate(`/grade/${rubricId}/horizontal`, {
+          state: { studentNames: initialStudentNames, className }
+        });
+      }
+    } catch (error) {
+      console.error(error);
+      toast({
+        variant: "destructive",
+        title: "Import Failed",
+        description: "Could not read the session file. Make sure it is a valid export.",
+      });
+    }
+
+    // Reset input
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
@@ -16,6 +79,17 @@ const Index = () => {
             </div>
           </div>
           <div className="flex gap-2">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              className="hidden"
+              accept=".xlsx,.xls"
+            />
+            <Button variant="outline" onClick={handleImportClick} className="gap-2">
+              <Upload className="h-4 w-4" />
+              Import Session
+            </Button>
             <a href="/results" className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2">
               View Results
             </a>

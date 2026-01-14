@@ -20,9 +20,9 @@ export function GradingView() {
   const { rubricId } = useParams();
   const navigate = useNavigate();
   const { getRubricById, addGradedStudent } = useRubricStore();
-  
+
   const rubric = getRubricById(rubricId || '');
-  
+
   const [studentName, setStudentName] = useState('');
   const [selections, setSelections] = useState<{ [rowId: string]: string }>({});
   const [cellFeedback, setCellFeedback] = useState<CellFeedback[]>([]);
@@ -58,16 +58,16 @@ export function GradingView() {
 
   const { totalScore, rowScores } = useMemo(() => {
     if (!rubric) return { totalScore: 0, rowScores: {} };
-    
+
     const scoringMode = rubric.scoringMode || 'discrete';
     const rowScores: { [rowId: string]: number } = {};
     let total = 0;
-    
+
     rubric.rows.forEach((row) => {
       const selectedColumnId = selections[row.id];
       if (selectedColumnId) {
         const selectedColumnIndex = rubric.columns.findIndex((c) => c.id === selectedColumnId);
-        
+
         if (selectedColumnIndex !== -1) {
           if (scoringMode === 'cumulative') {
             // Sum all columns up to and including the selected one
@@ -88,7 +88,7 @@ export function GradingView() {
         rowScores[row.id] = 0;
       }
     });
-    
+
     return { totalScore: total, rowScores };
   }, [rubric, selections]);
 
@@ -101,15 +101,15 @@ export function GradingView() {
 
   const currentStatus = useMemo(() => {
     if (!rubric) return null;
-    
+
     // Sort thresholds by min value descending to check highest first
     const sortedThresholds = [...rubric.thresholds].sort((a, b) => b.min - a.min);
-    
+
     for (const threshold of sortedThresholds) {
-      const meetsScoreRequirement = threshold.max === null 
-        ? totalScore >= threshold.min 
+      const meetsScoreRequirement = threshold.max === null
+        ? totalScore >= threshold.min
         : totalScore >= threshold.min && totalScore <= threshold.max;
-      
+
       if (meetsScoreRequirement) {
         // Check advanced requirements
         if (threshold.requiresNoLowest && hasLowestColumnSelected) {
@@ -119,7 +119,7 @@ export function GradingView() {
         return threshold;
       }
     }
-    
+
     return rubric.thresholds[0] || null;
   }, [rubric, totalScore, hasLowestColumnSelected]);
 
@@ -131,30 +131,30 @@ export function GradingView() {
     if (!rubric) return;
 
     const doc = new jsPDF();
-    
+
     // Title
     doc.setFontSize(20);
     doc.setTextColor(13, 148, 136); // Primary teal color
     doc.text(rubric.name, 14, 20);
-    
+
     // Student info
     doc.setFontSize(12);
     doc.setTextColor(60, 60, 60);
     doc.text(`Student: ${studentName || 'Not specified'}`, 14, 32);
     doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, 40);
-    
+
     // Score and Status
     doc.setFontSize(14);
     doc.text(`Total Score: ${totalScore} / ${rubric.totalPossiblePoints} points`, 14, 52);
     doc.text(`Status: ${currentStatus?.label || 'N/A'}`, 14, 60);
-    
+
     // Rubric table
     const tableData = rubric.rows.map((row) => {
       const selectedColumnId = selections[row.id];
       const selectedColumn = rubric.columns.find((c) => c.id === selectedColumnId);
       const criteria = selectedColumnId ? getCriteriaValue(row.id, selectedColumnId) : '-';
       const feedback = selectedColumnId ? getCellFeedback(row.id, selectedColumnId) : '';
-      
+
       return [
         row.name,
         selectedColumn?.name || '-',
@@ -227,11 +227,11 @@ export function GradingView() {
       statusLabel: currentStatus?.label || 'In Ontwikkeling',
       gradedAt: new Date(),
     };
-    
+
     if (rubricId) {
       addGradedStudent(rubricId, student);
     }
-    
+
     return student;
   };
 
@@ -282,10 +282,10 @@ export function GradingView() {
               {rubric.name}
             </h1>
             <div className="flex gap-2">
-              <Button 
-                onClick={handleSaveAndNext} 
+              <Button
+                onClick={handleSaveAndNext}
                 variant="outline"
-                className="gap-2" 
+                className="gap-2"
                 disabled={!allRowsSelected}
               >
                 <UserPlus className="h-4 w-4" />
@@ -342,8 +342,8 @@ export function GradingView() {
                       currentStatus?.status === 'development' && "bg-status-development"
                     )}
                     style={{
-                      width: `${rubric.totalPossiblePoints > 0 
-                        ? (totalScore / rubric.totalPossiblePoints) * 100 
+                      width: `${rubric.totalPossiblePoints > 0
+                        ? (totalScore / rubric.totalPossiblePoints) * 100
                         : 0}%`,
                     }}
                   />
@@ -382,13 +382,13 @@ export function GradingView() {
                     <table className="w-full border-collapse">
                       <thead>
                         <tr>
-                          <th className="sticky left-0 z-10 bg-grid-header p-4 text-left font-semibold border-b min-w-[180px]">
+                          <th className="sticky top-0 left-0 z-30 bg-card p-4 text-left font-semibold border-b min-w-[180px] shadow-[0_1px_2px_rgba(0,0,0,0.1)]">
                             Learning Goal
                           </th>
                           {rubric.columns.map((col) => (
                             <th
                               key={col.id}
-                              className="bg-grid-header p-4 text-center font-semibold border-b min-w-[150px]"
+                              className="sticky top-0 z-20 bg-card p-4 text-center font-semibold border-b min-w-[150px] shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
                             >
                               {col.name}
                               <span className="block text-xs font-normal text-muted-foreground">
@@ -396,7 +396,7 @@ export function GradingView() {
                               </span>
                             </th>
                           ))}
-                          <th className="bg-grid-header p-4 text-center font-semibold border-b min-w-[80px]">
+                          <th className="sticky top-0 z-20 bg-card p-4 text-center font-semibold border-b min-w-[80px] shadow-[0_1px_2px_rgba(0,0,0,0.1)]">
                             Score
                           </th>
                         </tr>
@@ -411,7 +411,7 @@ export function GradingView() {
                               const isSelected = selections[row.id] === col.id;
                               const criteria = getCriteriaValue(row.id, col.id);
                               const feedback = getCellFeedback(row.id, col.id);
-                              
+
                               return (
                                 <td key={col.id} className="border-b p-2">
                                   <div className="relative">
@@ -439,7 +439,7 @@ export function GradingView() {
                                         {criteria || <em className="opacity-50">No criteria</em>}
                                       </p>
                                     </button>
-                                    
+
                                     {/* Feedback Popover */}
                                     {isSelected && (
                                       <Popover>
@@ -447,8 +447,8 @@ export function GradingView() {
                                           <button
                                             className={cn(
                                               "absolute top-1 right-1 p-1.5 rounded-full transition-colors",
-                                              feedback 
-                                                ? "bg-amber-500 text-white" 
+                                              feedback
+                                                ? "bg-amber-500 text-white"
                                                 : "bg-muted hover:bg-muted-foreground/20 text-muted-foreground"
                                             )}
                                             onClick={(e) => e.stopPropagation()}
@@ -476,8 +476,8 @@ export function GradingView() {
                             <td className="border-b p-4 text-center">
                               <span className={cn(
                                 "inline-flex h-10 w-16 items-center justify-center rounded-lg font-bold transition-all",
-                                rowScores[row.id] > 0 
-                                  ? "bg-primary/10 text-primary" 
+                                rowScores[row.id] > 0
+                                  ? "bg-primary/10 text-primary"
                                   : "bg-muted text-muted-foreground"
                               )}>
                                 {rowScores[row.id] || 0}
