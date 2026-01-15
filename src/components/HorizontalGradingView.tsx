@@ -92,6 +92,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
   const [calculationCorrect, setCalculationCorrect] = useState<boolean>(true); // Default to true
 
   const isExam = rubric.type === 'exam';
+  const isMastery = rubric.gradingMethod === 'mastery';
 
   // Time Tracking State
   const [sessionStartTime] = useState<number>(Date.now());
@@ -99,11 +100,54 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
   const [sessionGradedCount, setSessionGradedCount] = useState(0);
   const [firstStudentDuration, setFirstStudentDuration] = useState<number | null>(null);
 
+  // -- Scoring Units --
+  // For Standard: 1 Unit = 1 Row
+  // For Mastery: 1 Unit = 1 Learning Goal (Cluster of Rows)
+  const gradingUnits = useMemo(() => {
+    if (isMastery) {
+      // Find unique goals respecting the order they appear in rows
+      const goals: string[] = [];
+      rubric.rows.forEach(row => {
+        const goal = row.learningGoal || 'General';
+        if (!goals.includes(goal)) {
+          goals.push(goal);
+        }
+      });
+
+      return goals.map(goal => ({
+        type: 'goal',
+        id: goal,
+        name: goal,
+        rows: rubric.rows.filter(r => (r.learningGoal || 'General') === goal),
+        rule: rubric.learningGoalRules?.find(r => r.learningGoal === goal)
+      }));
+    } else {
+      return rubric.rows.map(row => ({
+        type: 'row',
+        id: row.id,
+        name: row.name,
+        rows: [row], // Only itself
+        rule: undefined
+      }));
+    }
+  }, [rubric, isMastery]);
+
+  const currentUnitIndex = useMemo(() => {
+    if (isMastery) {
+      // Find which unit covers the current row
+      const currentRowObj = rubric.rows[currentRowIndex];
+      const currentGoal = currentRowObj?.learningGoal || 'General';
+      return gradingUnits.findIndex(u => u.name === currentGoal);
+    }
+    return currentRowIndex;
+  }, [isMastery, currentRowIndex, rubric.rows, gradingUnits]);
+
   // -- Derived State --
   // We use currentUnitIndex now instead of just row index for first-check
   const isFirstUnit = currentUnitIndex === 0;
   // Fallback if we still need actual row object for legacy props
   const currentRow = rubric.rows[currentRowIndex];
+  const isFirstRow = currentRowIndex === 0;
 
   // Available names for autocomplete
   const availableNames = useMemo(() => {
@@ -118,6 +162,16 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
   const currentStudentName = isFirstUnit
     ? nameInput
     : studentOrder[currentStudentIndex] || '';
+
+  const currentStudentData = studentsData.get(currentStudentName) || {
+    selections: {},
+    comments: '',
+    rowScores: {},
+    extraConditionsMet: {},
+    cellFeedback: []
+  };
+
+  const currentUnit = gradingUnits[currentUnitIndex] || gradingUnits[0];
 
   // -- Persistence (Save & Resume) --
   const safeClassName = className.replace(/[^a-zA-Z0-9]/g, '_');
@@ -568,7 +622,9 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
   const progressPercent = totalCells > 0 ? (completedCells / totalCells) * 100 : 0;
 
   const studentsGradedThisUnit = isFirstRow ? studentOrder.length : currentStudentIndex;
+  const studentsGradedThisRow = studentsGradedThisUnit; // Alias for legacy code
   const unitProgress = totalStudents > 0 ? ((studentsGradedThisUnit) / totalStudents) * 100 : 0;
+  const rowProgress = unitProgress; // Alias
 
   // Avg Time Calc
   const avgTimePerStudent = useMemo(() => {
