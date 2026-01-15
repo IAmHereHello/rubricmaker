@@ -18,6 +18,7 @@ import autoTable from 'jspdf-autotable';
 import { CellFeedback, GradedStudent, Rubric, Threshold, StudentGradingData } from '@/types/rubric';
 import { exportGradingSession, GradingSessionState } from '@/lib/excel-state';
 import { useToast } from '@/components/ui/use-toast';
+import { Switch } from '@/components/ui/switch';
 
 interface HorizontalGradingViewProps {
   rubric: Rubric;
@@ -100,6 +101,11 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
   const [completedStudentCount, setCompletedStudentCount] = useState(0);
   const [sessionGradedCount, setSessionGradedCount] = useState(0);
   const [firstStudentDuration, setFirstStudentDuration] = useState<number | null>(null);
+
+  // Autosave State
+  const [autosaveEnabled, setAutosaveEnabled] = useState(true);
+  const [autosaveInterval, setAutosaveInterval] = useState(60000); // 1 minute default
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   // -- Computed Variables --
   const isFirstRow = currentRowIndex === 0;
@@ -197,16 +203,29 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
     }
   }, [rubric.id, storageKey]);
 
-  // Save session on change
+  // Save session on change (Autosave Logic)
+
+  // Keep a ref to the latest state so the interval can read it without restarting
+  const stateRef = useRef({ rubricId: rubric.id, currentRowIndex, studentOrder, currentStudentIndex, studentsData, completedStudentCount });
+  useEffect(() => {
+    stateRef.current = { rubricId: rubric.id, currentRowIndex, studentOrder, currentStudentIndex, studentsData, completedStudentCount };
+  }, [rubric.id, currentRowIndex, studentOrder, currentStudentIndex, studentsData, completedStudentCount]);
+
+  // Mark as unsaved on change
   useEffect(() => {
     if (studentsData.size === 0 && currentRowIndex === 0 && currentStudentIndex === 0) return;
+    setHasUnsavedChanges(true);
+  }, [rubric.id, currentRowIndex, studentOrder, currentStudentIndex, studentsData, completedStudentCount]);
 
-    // Debounce save slightly or just save on every significant change
+
+  const saveSessionToStorage = useCallback(() => {
+    const { rubricId, currentRowIndex, studentOrder, currentStudentIndex, studentsData, completedStudentCount } = stateRef.current;
+
     const dataObj: Record<string, StudentGradingData> = {};
     studentsData.forEach((val, key) => { dataObj[key] = val; });
 
     const sessionState = {
-      rubricId: rubric.id,
+      rubricId,
       currentRowIndex,
       studentOrder,
       currentStudentIndex,
@@ -215,7 +234,29 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
       completedStudentCount,
     };
     localStorage.setItem(storageKey, JSON.stringify(sessionState));
-  }, [rubric.id, storageKey, currentRowIndex, studentOrder, currentStudentIndex, studentsData, completedStudentCount]);
+    console.log('Session saved to localStorage');
+  }, [storageKey]);
+
+  // Interval Effect
+  useEffect(() => {
+    if (!autosaveEnabled) return;
+
+    const intervalId = setInterval(() => {
+      if (hasUnsavedChanges) {
+        saveSessionToStorage();
+        setHasUnsavedChanges(false);
+      }
+    }, autosaveInterval);
+
+    return () => clearInterval(intervalId);
+  }, [autosaveEnabled, autosaveInterval, hasUnsavedChanges, saveSessionToStorage]);
+
+  // Save on unmount (optional, but good practice if we have pending changes)
+  // useEffect(() => {
+  //   return () => {
+  //      if (hasUnsavedChanges) saveSessionToStorage(); 
+  //   }
+  // }, []); // This is tricky with stale closures in cleanup, skipping for now to rely on interval or manual save.
 
   // Clear session helper
   const clearSession = () => {
@@ -635,277 +676,301 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => navigate('/')} className="gap-2">
-                <ArrowLeft className="h-4 w-4" />
-                Exit
-              </Button>
-              <Button variant="outline" onClick={handleSaveAndExit} className="gap-2 border-primary/20 hover:bg-primary/5 text-primary">
-                <Download className="h-4 w-4" />
-                Save & Continue Later
+            <Button variant="ghost" onClick={() => navigate('/')} className="gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              Exit
+            </Button>
+            <div className="flex items-center gap-2 bg-secondary/20 p-1.5 rounded-lg">
+              <div className="flex items-center gap-2 px-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium">Autosave</span>
+                  <Switch
+                    checked={autosaveEnabled}
+                    onCheckedChange={setAutosaveEnabled}
+                    className="scale-75"
+                  />
+                </div>
+                {autosaveEnabled && (
+                  <select
+                    className="text-xs bg-transparent border-none focus:ring-0 cursor-pointer"
+                    value={autosaveInterval}
+                    onChange={(e) => setAutosaveInterval(Number(e.target.value))}
+                  >
+                    <option value={30000}>30s</option>
+                    <option value={60000}>1m</option>
+                    <option value={120000}>2m</option>
+                    <option value={300000}>5m</option>
+                  </select>
+                )}
+              </div>
+              <div className="h-4 w-[1px] bg-border mx-1" />
+              <Button variant="outline" onClick={handleSaveAndExit} className="gap-2 h-8 border-primary/20 hover:bg-primary/5 text-primary text-xs">
+                <Download className="h-3 w-3" />
+                Save
               </Button>
             </div>
-            <h1 className="text-lg font-semibold truncate max-w-[200px] md:max-w-none">
-              {rubric.name} - Horizontal Grading
-            </h1>
-            <div className="w-20" />
           </div>
+          <h1 className="text-lg font-semibold truncate max-w-[200px] md:max-w-none">
+            {rubric.name} - Horizontal Grading
+          </h1>
+          <div className="w-20" />
         </div>
-      </header>
+    </div>
+      </header >
 
-      <div className="container mx-auto px-4 py-6">
-        <Card className="shadow-soft mb-6">
-          <CardContent className="pt-6">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Overall Progress</span>
-                <span className="font-medium">{Math.round(progressPercent)}%</span>
-              </div>
-              <Progress value={progressPercent} className="h-2" />
-              <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <span>Row {currentRowIndex + 1} of {rubric.rows.length}</span>
-                <span className="flex gap-4">
-                  <span>{completedCells} of {totalCells} cells</span>
-                  {avgTimePerStudent > 0 && (
-                    <span className="text-primary font-medium">~{avgTimePerStudent}s / student</span>
-                  )}
-                  {estimatedTimeRemaining && (
-                    <span className="text-muted-foreground ml-2">({estimatedTimeRemaining} left)</span>
-                  )}
-                </span>
-              </div>
+    <div className="container mx-auto px-4 py-6">
+      <Card className="shadow-soft mb-6">
+        <CardContent className="pt-6">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Overall Progress</span>
+              <span className="font-medium">{Math.round(progressPercent)}%</span>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Left Panel: Unit Info */}
-        <Card className="shadow-soft lg:col-span-1">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Target className="h-4 w-4" />
-              {isMastery ? 'Current Goal' : 'Current Item'}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
-              <p className="font-medium text-lg">{currentUnit?.name}</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Item {currentUnitIndex + 1} of {gradingUnits.length}
-              </p>
-              {!isMastery && currentUnit.rows[0]?.calculationPoints && currentUnit.rows[0].calculationPoints! > 0 && (
-                <div className="mt-2 text-xs font-semibold text-amber-600 flex items-center gap-1">
-                  <span>⚠️ Includes {currentUnit.rows[0].calculationPoints} calculation points</span>
-                </div>
-              )}
-              {isMastery && currentUnit.rule && (
-                <div className="mt-2 space-y-1">
-                  <Badge variant="outline" className="w-full justify-center">
-                    Threshold: {currentUnit.rule.threshold} / {currentUnit.rows.length} correct
-                  </Badge>
-                  {getGoalStatus() !== null && (
-                    <div className={cn(
-                      "text-center font-bold py-1 px-2 rounded mt-2 border transition-colors duration-300",
-                      getGoalStatus()
-                        ? "bg-green-100 text-green-700 border-green-200"
-                        : "bg-red-100 text-red-700 border-red-200"
-                    )}>
-                      {getGoalStatus() ? 'BEHEERST' : 'NIET BEHEERST'}
-                    </div>
-                  )}
-                  {currentUnit.rule.extraConditions.length > 0 && (
-                    <div className="text-xs text-center text-muted-foreground mt-1">
-                      Conditions: {currentConditionsCount} / {requiredConditionsCount}
-                    </div>
-                  )}
-                </div>
-              )}
+            <Progress value={progressPercent} className="h-2" />
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>Row {currentRowIndex + 1} of {rubric.rows.length}</span>
+              <span className="flex gap-4">
+                <span>{completedCells} of {totalCells} cells</span>
+                {avgTimePerStudent > 0 && (
+                  <span className="text-primary font-medium">~{avgTimePerStudent}s / student</span>
+                )}
+                {estimatedTimeRemaining && (
+                  <span className="text-muted-foreground ml-2">({estimatedTimeRemaining} left)</span>
+                )}
+              </span>
             </div>
+          </div>
+        </CardContent>
+      </Card>
 
-            <div className="mt-4 space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Students graded for this item</span>
-                <span className="font-medium">{studentsGradedThisUnit} / {totalStudents}</span>
+      {/* Left Panel: Unit Info */}
+      <Card className="shadow-soft lg:col-span-1">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Target className="h-4 w-4" />
+            {isMastery ? 'Current Goal' : 'Current Item'}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
+            <p className="font-medium text-lg">{currentUnit?.name}</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Item {currentUnitIndex + 1} of {gradingUnits.length}
+            </p>
+            {!isMastery && currentUnit.rows[0]?.calculationPoints && currentUnit.rows[0].calculationPoints! > 0 && (
+              <div className="mt-2 text-xs font-semibold text-amber-600 flex items-center gap-1">
+                <span>⚠️ Includes {currentUnit.rows[0].calculationPoints} calculation points</span>
               </div>
-              <Progress value={unitProgress} className="h-1.5" />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Main Grading Area */}
-        <Card className="shadow-soft lg:col-span-2">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              {isFirstRow ? 'Grade Student' : `Grading: ${currentStudentName}`}
-            </CardTitle>
-            {!isFirstRow && (
-              <CardDescription>
-                Student {currentStudentIndex + 1} of {studentOrder.length}
-              </CardDescription>
             )}
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Student Name Input (First Row Only) */}
-            {isFirstRow && (
-              <div className="space-y-2 relative">
-                <Label htmlFor="student-name">Student Name</Label>
-                <Input
-                  ref={inputRef}
-                  id="student-name"
-                  placeholder="Type or select student name..."
-                  value={nameInput}
-                  onChange={(e) => {
-                    setNameInput(e.target.value);
-                    setShowSuggestions(true);
-                  }}
-                  onFocus={() => setShowSuggestions(true)}
-                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                  autoFocus
-                />
-                {showSuggestions && availableNames.length > 0 && (
-                  <div className="absolute z-10 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-48 overflow-auto">
-                    {availableNames.slice(0, 10).map((name) => (
-                      <button
-                        key={name}
-                        className="w-full px-3 py-2 text-left hover:bg-accent text-sm"
-                        onMouseDown={() => handleSuggestionClick(name)}
-                      >
-                        {name}
-                      </button>
-                    ))}
+            {isMastery && currentUnit.rule && (
+              <div className="mt-2 space-y-1">
+                <Badge variant="outline" className="w-full justify-center">
+                  Threshold: {currentUnit.rule.threshold} / {currentUnit.rows.length} correct
+                </Badge>
+                {getGoalStatus() !== null && (
+                  <div className={cn(
+                    "text-center font-bold py-1 px-2 rounded mt-2 border transition-colors duration-300",
+                    getGoalStatus()
+                      ? "bg-green-100 text-green-700 border-green-200"
+                      : "bg-red-100 text-red-700 border-red-200"
+                  )}>
+                    {getGoalStatus() ? 'BEHEERST' : 'NIET BEHEERST'}
+                  </div>
+                )}
+                {currentUnit.rule.extraConditions.length > 0 && (
+                  <div className="text-xs text-center text-muted-foreground mt-1">
+                    Conditions: {currentConditionsCount} / {requiredConditionsCount}
                   </div>
                 )}
               </div>
             )}
+          </div>
 
-            {/* Column Selection or Exam Input */}
-            <div className="space-y-2">
-              <Label>{isExam ? 'Enter Score' : 'Select Level'}</Label>
+          <div className="mt-4 space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Students graded for this item</span>
+              <span className="font-medium">{studentsGradedThisUnit} / {totalStudents}</span>
+            </div>
+            <Progress value={unitProgress} className="h-1.5" />
+          </div>
+        </CardContent>
+      </Card>
 
-              {isExam ? (
-                <div className="space-y-4">
-                  {currentRow?.description && (
-                    <p className="text-sm text-muted-foreground bg-secondary/10 p-3 rounded-md">
-                      {currentRow.description}
-                    </p>
-                  )}
-                  <div className="flex items-center gap-4">
-                    <div className="flex-1">
-                      <div className="relative">
-                        <Input
-                          type="number"
-                          min="0"
-                          max={currentRow?.maxPoints || 100}
-                          step="0.5"
-                          value={currentManualScore !== undefined ? currentManualScore : ''}
-                          onChange={(e) => {
-                            const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
-                            setCurrentManualScore(val);
-                          }}
-                          className="h-14 text-lg"
-                          placeholder="Points..."
-                          autoFocus={!isFirstRow} // Focus input if not first row (where name input is focused)
-                        />
-                        <span className="absolute right-4 top-4 text-muted-foreground font-medium">
-                          / {currentRow?.maxPoints || 0}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid gap-3">
-                  {rubric.columns.map((col) => {
-                    const criteria = getCriteriaValue(currentRow?.id || '', col.id);
-                    const isSelected = selectedColumn === col.id;
-
-                    return (
-                      <button
-                        key={col.id}
-                        onClick={() => handleColumnSelect(col.id)}
-                        className={cn(
-                          "w-full p-4 rounded-lg border-2 text-left transition-all",
-                          "hover:border-primary/50 hover:bg-primary/5",
-                          isSelected
-                            ? "border-primary bg-primary/10 ring-2 ring-primary/20"
-                            : "border-muted bg-muted/30"
-                        )}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-medium">{col.name}</span>
-                          <span className="text-sm text-muted-foreground">{col.points} pts</span>
-                        </div>
-                        <p className={cn(
-                          "text-sm",
-                          isSelected ? "text-foreground" : "text-muted-foreground"
-                        )}>
-                          {criteria || <em className="opacity-50">No criteria</em>}
-                        </p>
-                        {isSelected && (
-                          <div className="flex items-center gap-2 mt-2 text-primary">
-                            <Check className="h-4 w-4" />
-                            <span className="text-sm font-medium">Selected</span>
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
+      {/* Main Grading Area */}
+      <Card className="shadow-soft lg:col-span-2">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            {isFirstRow ? 'Grade Student' : `Grading: ${currentStudentName}`}
+          </CardTitle>
+          {!isFirstRow && (
+            <CardDescription>
+              Student {currentStudentIndex + 1} of {studentOrder.length}
+            </CardDescription>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Student Name Input (First Row Only) */}
+          {isFirstRow && (
+            <div className="space-y-2 relative">
+              <Label htmlFor="student-name">Student Name</Label>
+              <Input
+                ref={inputRef}
+                id="student-name"
+                placeholder="Type or select student name..."
+                value={nameInput}
+                onChange={(e) => {
+                  setNameInput(e.target.value);
+                  setShowSuggestions(true);
+                }}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                autoFocus
+              />
+              {showSuggestions && availableNames.length > 0 && (
+                <div className="absolute z-10 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-48 overflow-auto">
+                  {availableNames.slice(0, 10).map((name) => (
+                    <button
+                      key={name}
+                      className="w-full px-3 py-2 text-left hover:bg-accent text-sm"
+                      onMouseDown={() => handleSuggestionClick(name)}
+                    >
+                      {name}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
+          )}
 
-            {/* Calculation Points Checkbox */}
-            {(selectedColumn || (isExam && currentManualScore !== undefined)) && currentRow?.calculationPoints && currentRow.calculationPoints > 0 && (
-              <div className="p-4 bg-muted/30 rounded-lg border border-dashed border-muted-foreground/50">
-                <div className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    id="calculation-check"
-                    checked={calculationCorrect}
-                    onChange={(e) => setCalculationCorrect(e.target.checked)}
-                    className="mt-1 h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary"
-                  />
-                  <div className="grid gap-1.5 leading-none">
-                    <Label htmlFor="calculation-check" className="text-base font-medium cursor-pointer">
-                      Award Calculation Points (+{currentRow.calculationPoints})
-                    </Label>
-                    <p className="text-sm text-muted-foreground">
-                      Uncheck if the student made a calculation error, even if the logic was correct.
-                    </p>
+          {/* Column Selection or Exam Input */}
+          <div className="space-y-2">
+            <Label>{isExam ? 'Enter Score' : 'Select Level'}</Label>
+
+            {isExam ? (
+              <div className="space-y-4">
+                {currentRow?.description && (
+                  <p className="text-sm text-muted-foreground bg-secondary/10 p-3 rounded-md">
+                    {currentRow.description}
+                  </p>
+                )}
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <Input
+                        type="number"
+                        min="0"
+                        max={currentRow?.maxPoints || 100}
+                        step="0.5"
+                        value={currentManualScore !== undefined ? currentManualScore : ''}
+                        onChange={(e) => {
+                          const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
+                          setCurrentManualScore(val);
+                        }}
+                        className="h-14 text-lg"
+                        placeholder="Points..."
+                        autoFocus={!isFirstRow} // Focus input if not first row (where name input is focused)
+                      />
+                      <span className="absolute right-4 top-4 text-muted-foreground font-medium">
+                        / {currentRow?.maxPoints || 0}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
-            )}
+            ) : (
+              <div className="grid gap-3">
+                {rubric.columns.map((col) => {
+                  const criteria = getCriteriaValue(currentRow?.id || '', col.id);
+                  const isSelected = selectedColumn === col.id;
 
-            {/* Cell Feedback */}
-            {(selectedColumn || (isExam && currentManualScore !== undefined)) && (
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4" />
-                  Feedback for this cell (optional)
-                </Label>
-                <Textarea
-                  placeholder="Add specific feedback..."
-                  value={currentCellFeedback}
-                  onChange={(e) => setCurrentCellFeedback(e.target.value)}
-                  className="min-h-[80px]"
-                />
+                  return (
+                    <button
+                      key={col.id}
+                      onClick={() => handleColumnSelect(col.id)}
+                      className={cn(
+                        "w-full p-4 rounded-lg border-2 text-left transition-all",
+                        "hover:border-primary/50 hover:bg-primary/5",
+                        isSelected
+                          ? "border-primary bg-primary/10 ring-2 ring-primary/20"
+                          : "border-muted bg-muted/30"
+                      )}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium">{col.name}</span>
+                        <span className="text-sm text-muted-foreground">{col.points} pts</span>
+                      </div>
+                      <p className={cn(
+                        "text-sm",
+                        isSelected ? "text-foreground" : "text-muted-foreground"
+                      )}>
+                        {criteria || <em className="opacity-50">No criteria</em>}
+                      </p>
+                      {isSelected && (
+                        <div className="flex items-center gap-2 mt-2 text-primary">
+                          <Check className="h-4 w-4" />
+                          <span className="text-sm font-medium">Selected</span>
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             )}
+          </div>
 
-            {/* Next Student Button */}
-            <Button
-              onClick={handleNextStudent}
-              disabled={!currentStudentName.trim() || (isExam ? currentManualScore === undefined : !selectedColumn)}
-              className="w-full gap-2"
-              size="lg"
-            >
-              Next Student
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+          {/* Calculation Points Checkbox */}
+          {(selectedColumn || (isExam && currentManualScore !== undefined)) && currentRow?.calculationPoints && currentRow.calculationPoints > 0 && (
+            <div className="p-4 bg-muted/30 rounded-lg border border-dashed border-muted-foreground/50">
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="calculation-check"
+                  checked={calculationCorrect}
+                  onChange={(e) => setCalculationCorrect(e.target.checked)}
+                  className="mt-1 h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary"
+                />
+                <div className="grid gap-1.5 leading-none">
+                  <Label htmlFor="calculation-check" className="text-base font-medium cursor-pointer">
+                    Award Calculation Points (+{currentRow.calculationPoints})
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    Uncheck if the student made a calculation error, even if the logic was correct.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Cell Feedback */}
+          {(selectedColumn || (isExam && currentManualScore !== undefined)) && (
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <MessageSquare className="h-4 w-4" />
+                Feedback for this cell (optional)
+              </Label>
+              <Textarea
+                placeholder="Add specific feedback..."
+                value={currentCellFeedback}
+                onChange={(e) => setCurrentCellFeedback(e.target.value)}
+                className="min-h-[80px]"
+              />
+            </div>
+          )}
+
+          {/* Next Student Button */}
+          <Button
+            onClick={handleNextStudent}
+            disabled={!currentStudentName.trim() || (isExam ? currentManualScore === undefined : !selectedColumn)}
+            className="w-full gap-2"
+            size="lg"
+          >
+            Next Student
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </CardContent>
+      </Card>
     </div>
+    </div >
   );
 }

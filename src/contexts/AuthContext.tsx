@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
@@ -6,8 +5,10 @@ import { supabase } from '@/lib/supabase';
 interface AuthContextType {
     session: Session | null;
     user: User | null;
+    isGuest: boolean;
     loading: boolean;
     signOut: () => Promise<void>;
+    loginAsGuest: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -15,9 +16,18 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [session, setSession] = useState<Session | null>(null);
     const [user, setUser] = useState<User | null>(null);
+    const [isGuest, setIsGuest] = useState(false);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        // Check for guest mode
+        const guestMode = localStorage.getItem('guest-mode');
+        if (guestMode === 'true') {
+            setIsGuest(true);
+            setLoading(false);
+            return;
+        }
+
         // Get initial session
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSession(session);
@@ -36,11 +46,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }, []);
 
     const signOut = async () => {
-        await supabase.auth.signOut();
+        if (isGuest) {
+            setIsGuest(false);
+            localStorage.removeItem('guest-mode');
+        } else {
+            await supabase.auth.signOut();
+        }
+    };
+
+    const loginAsGuest = () => {
+        setIsGuest(true);
+        localStorage.setItem('guest-mode', 'true');
     };
 
     return (
-        <AuthContext.Provider value={{ session, user, loading, signOut }}>
+        <AuthContext.Provider value={{ session, user, isGuest, loading, signOut, loginAsGuest }}>
             {children}
         </AuthContext.Provider>
     );

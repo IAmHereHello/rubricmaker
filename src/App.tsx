@@ -19,10 +19,10 @@ import { Navigate, Outlet } from "react-router-dom";
 
 // Protected Route Wrapper
 const ProtectedRoute = () => {
-  const { session, loading } = useAuth();
+  const { session, isGuest, loading } = useAuth();
 
   if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
-  if (!session) return <Navigate to="/login" replace />;
+  if (!session && !isGuest) return <Navigate to="/login" replace />;
 
   return <Outlet />;
 };

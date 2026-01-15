@@ -15,15 +15,20 @@ const Login = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
-    const { session } = useAuth();
+    const { session, loginAsGuest, isGuest } = useAuth();
     const navigate = useNavigate();
     const { toast } = useToast();
 
     // Redirect if already logged in
-    if (session) {
+    if (session || isGuest) {
         navigate('/');
         return null;
     }
+
+    const handleGuestLogin = () => {
+        loginAsGuest();
+        navigate('/');
+    };
 
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -111,6 +116,16 @@ const Login = () => {
                                 onClick={() => setIsLogin(!isLogin)}
                             >
                                 {isLogin ? 'Sign up' : 'Log in'}
+                            </Button>
+                        </div>
+                        <div className="text-sm text-center">
+                            <Button
+                                variant="link"
+                                className="text-muted-foreground font-normal"
+                                type="button"
+                                onClick={handleGuestLogin}
+                            >
+                                Continue as Guest
                             </Button>
                         </div>
                     </CardFooter>

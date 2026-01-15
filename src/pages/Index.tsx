@@ -1,14 +1,15 @@
 import { useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { RubricList } from '@/components/RubricList';
-import { ClipboardList, Upload, LogOut } from 'lucide-react';
+import { ClipboardList, Upload, LogOut, UserPlus, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { importGradingSession } from '@/lib/excel-state';
 import { useToast } from '@/components/ui/use-toast';
 import { useRubricStore } from '@/hooks/useRubricStore';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const Index = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -16,9 +17,15 @@ const Index = () => {
   const { toast } = useToast();
   const { getRubricById } = useRubricStore();
   const { t } = useLanguage();
+  const { isGuest, signOut } = useAuth();
 
   const handleImportClick = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleRegister = () => {
+    signOut();
+    navigate('/login');
   };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -98,12 +105,29 @@ const Index = () => {
             <Link to="/results" className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2">
               {t('action.view_results')}
             </Link>
-            <Button variant="ghost" onClick={() => supabase.auth.signOut()} title="Sign Out">
-              <LogOut className="h-5 w-5" />
-            </Button>
+
+            {isGuest ? (
+              <Button onClick={handleRegister} className="gap-2" variant="default">
+                <UserPlus className="h-4 w-4" />
+                Register Account
+              </Button>
+            ) : (
+              <Button variant="ghost" onClick={() => signOut()} title="Sign Out">
+                <LogOut className="h-5 w-5" />
+              </Button>
+            )}
           </div>
         </div>
       </header>
+
+      {isGuest && (
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-900">
+          <div className="container mx-auto px-4 py-2 flex items-center gap-2 text-sm text-yellow-800 dark:text-yellow-200">
+            <AlertTriangle className="h-4 w-4" />
+            <span>You are browsing as a Guest. Changes are saved to this device only and may be lost if you clear your browser data.</span>
+          </div>
+        </div>
+      )}
 
       <main className="container mx-auto px-4 py-8">
         <RubricList />
