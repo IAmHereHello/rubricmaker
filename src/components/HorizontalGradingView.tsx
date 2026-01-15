@@ -101,9 +101,71 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
   const [sessionGradedCount, setSessionGradedCount] = useState(0);
   const [firstStudentDuration, setFirstStudentDuration] = useState<number | null>(null);
 
+  // -- Computed Variables --
+  const isFirstRow = currentRowIndex === 0;
+  const currentRow = rubric.rows[currentRowIndex];
 
+  // We use currentUnitIndex now instead of just row index for first-check
+  // But we need to define currentUnitIndex FIRST if we want to use it here.
+  // However, currentUnitIndex depends on gradingUnits which depends on useMemo.
+  // So we should define `isFirstUnit` AFTER `currentUnitIndex` is defined.
 
+  // Actually, looking at the code structure:
+  // gradingUnits is defined at line 116.
+  // currentUnitIndex is defined at line 140.
+  // availableNames and isFirstUnit should be defined AFTER those.
 
+  const currentStudentName = isFirstRow ? nameInput : (studentOrder[currentStudentIndex] || '');
+  const currentStudentData = studentsData.get(currentStudentName) || {
+    studentName: currentStudentName,
+    selections: {},
+    cellFeedback: [],
+    generalFeedback: '',
+    calculationCorrect: {}
+  } as StudentGradingData;
+
+  const gradingUnits = useMemo(() => {
+    if (isMastery && rubric.learningGoalRules) {
+      const groups: { [key: string]: typeof rubric.rows } = {};
+      rubric.rows.forEach(r => {
+        const g = r.learningGoal || 'Uncategorized';
+        if (!groups[g]) groups[g] = [];
+        groups[g].push(r);
+      });
+      return rubric.learningGoalRules.map(rule => ({
+        id: rule.learningGoal,
+        name: rule.learningGoal,
+        rows: groups[rule.learningGoal] || [],
+        rule: rule
+      }));
+    }
+    // Default: One unit per row
+    return rubric.rows.map(r => ({
+      id: r.id,
+      name: r.name,
+      rows: [r],
+      rule: undefined
+    }));
+  }, [rubric, isMastery]);
+
+  const currentUnitIndex = useMemo(() => {
+    if (!currentRow) return 0;
+    return gradingUnits.findIndex(u => u.rows.some(r => r.id === currentRow.id));
+  }, [gradingUnits, currentRow]);
+
+  const currentUnit = gradingUnits[currentUnitIndex] || gradingUnits[0];
+
+  const isFirstUnit = currentUnitIndex === 0;
+
+  // Available names for autocomplete
+  const availableNames = useMemo(() => {
+    if (!isFirstUnit) return [];
+    const gradedInThisRow = Array.from(studentsData.keys());
+    return initialStudentNames.filter(name =>
+      !gradedInThisRow.includes(name) &&
+      name.toLowerCase().includes(nameInput.toLowerCase())
+    );
+  }, [initialStudentNames, studentsData, nameInput, isFirstUnit]);
 
   // -- Persistence (Save & Resume) --
   const safeClassName = className.replace(/[^a-zA-Z0-9]/g, '_');
@@ -845,6 +907,5 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
         </Card>
       </div>
     </div>
-    </div >
   );
 }
