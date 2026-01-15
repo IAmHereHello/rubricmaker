@@ -109,4 +109,5 @@ export interface LearningGoalRule {
   learningGoal: string;
   threshold: number; // Number of correct questions needed
   extraConditions: string[]; // List of custom checkbox labels
+  minConditions?: number; // Minimum number of conditions that must be checked (default: all)
 }

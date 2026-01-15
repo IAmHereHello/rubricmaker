@@ -1,13 +1,14 @@
 import { useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { RubricList } from '@/components/RubricList';
-import { ClipboardList, Upload } from 'lucide-react';
+import { ClipboardList, Upload, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { importGradingSession } from '@/lib/excel-state';
 import { useToast } from '@/components/ui/use-toast';
 import { useRubricStore } from '@/hooks/useRubricStore';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { supabase } from '@/lib/supabase';
 
 const Index = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -97,6 +98,9 @@ const Index = () => {
             <Link to="/results" className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2">
               {t('action.view_results')}
             </Link>
+            <Button variant="ghost" onClick={() => supabase.auth.signOut()} title="Sign Out">
+              <LogOut className="h-5 w-5" />
+            </Button>
           </div>
         </div>
       </header>

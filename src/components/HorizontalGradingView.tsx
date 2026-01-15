@@ -100,20 +100,22 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
   const [firstStudentDuration, setFirstStudentDuration] = useState<number | null>(null);
 
   // -- Derived State --
-  const isFirstRow = currentRowIndex === 0;
+  // We use currentUnitIndex now instead of just row index for first-check
+  const isFirstUnit = currentUnitIndex === 0;
+  // Fallback if we still need actual row object for legacy props
   const currentRow = rubric.rows[currentRowIndex];
 
   // Available names for autocomplete
   const availableNames = useMemo(() => {
-    if (!isFirstRow) return [];
+    if (!isFirstUnit) return [];
     const gradedInThisRow = Array.from(studentsData.keys());
     return initialStudentNames.filter(name =>
       !gradedInThisRow.includes(name) &&
       name.toLowerCase().includes(nameInput.toLowerCase())
     );
-  }, [initialStudentNames, studentsData, nameInput, isFirstRow]);
+  }, [initialStudentNames, studentsData, nameInput, isFirstUnit]);
 
-  const currentStudentName = isFirstRow
+  const currentStudentName = isFirstUnit
     ? nameInput
     : studentOrder[currentStudentIndex] || '';
 
@@ -369,8 +371,8 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
     }
     setSessionGradedCount(prev => prev + 1);
 
-    // If first row, add to student order
-    if (isFirstRow) {
+    // If first unit, add to student order
+    if (isFirstUnit) {
       setStudentOrder(prev => [...prev, currentStudentName]);
     }
 
@@ -382,27 +384,32 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
     // Reset calculation checkbox for next student (default to true)
     setCalculationCorrect(true);
 
-    if (isFirstRow) {
+    if (isFirstUnit) {
       setNameInput('');
       const gradedCount = studentOrder.length + 1;
       if (gradedCount >= initialStudentNames.length) {
-        moveToNextRow();
+        moveToNextUnit();
       }
       setTimeout(() => inputRef.current?.focus(), 100);
     } else {
       if (currentStudentIndex + 1 >= studentOrder.length) {
-        moveToNextRow();
+        moveToNextUnit();
       } else {
         setCurrentStudentIndex(prev => prev + 1);
       }
     }
   };
 
-  const moveToNextRow = () => {
-    if (currentRowIndex + 1 >= rubric.rows.length) {
+  const moveToNextUnit = () => {
+    if (currentUnitIndex + 1 >= gradingUnits.length) {
       finishGrading();
     } else {
-      setCurrentRowIndex(prev => prev + 1);
+      // Find the start row index of the next unit
+      const nextUnit = gradingUnits[currentUnitIndex + 1];
+      const nextRowId = nextUnit.rows[0].id;
+      const nextRowIndex = rubric.rows.findIndex(r => r.id === nextRowId);
+
+      setCurrentRowIndex(nextRowIndex);
       setCurrentStudentIndex(0);
       setSelectedColumn(null);
       setCurrentManualScore(undefined);
@@ -455,9 +462,101 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
     inputRef.current?.focus();
   };
 
+  // For Standard: 1 Unit = 1 Row
+  // For Mastery: 1 Unit = 1 Learning Goal (Cluster of Rows)
+  const gradingUnits = useMemo(() => {
+    if (isMastery) {
+      // Find unique goals respecting the order they appear in rows
+      const goals: string[] = [];
+      rubric.rows.forEach(row => {
+        const goal = row.learningGoal || 'General';
+        if (!goals.includes(goal)) {
+          goals.push(goal);
+        }
+      });
+
+      return goals.map(goal => ({
+        type: 'goal',
+        id: goal,
+        name: goal,
+        rows: rubric.rows.filter(r => (r.learningGoal || 'General') === goal),
+        rule: rubric.learningGoalRules?.find(r => r.learningGoal === goal)
+      }));
+    } else {
+      return rubric.rows.map(row => ({
+        type: 'row',
+        id: row.id,
+        name: row.name,
+        rows: [row], // Only itself
+        rule: undefined
+      }));
+    }
+  }, [rubric, isMastery]);
+
+  const currentUnitIndex = useMemo(() => {
+    if (isMastery) {
+      // Find which unit covers the current row
+      const currentRowObj = rubric.rows[currentRowIndex];
+      const currentGoal = currentRowObj?.learningGoal || 'General';
+      return gradingUnits.findIndex(u => u.name === currentGoal);
+    }
+    return currentRowIndex;
+  }, [isMastery, currentRowIndex, rubric.rows, gradingUnits]);
+
+  const currentUnit = gradingUnits[currentUnitIndex] || gradingUnits[0];
+
+  // Helpers for Mastery
+  const toggleMasteryQuestion = (rowId: string) => {
+    const currentScore = currentStudentData.rowScores?.[rowId] || 0;
+    const newScore = currentScore > 0 ? 0 : 1;
+
+    const newRowScores = { ...currentStudentData.rowScores, [rowId]: newScore };
+    updateStudentData(currentStudentName, { rowScores: newRowScores });
+  };
+
+  const toggleMasteryCondition = (goalName: string, conditionIndex: number) => {
+    const currentConditions = currentStudentData.extraConditionsMet?.[goalName] || {};
+    const newValue = !currentConditions[conditionIndex];
+    const newConditions = { ...currentConditions, [conditionIndex]: newValue };
+
+    const newExtraConditionsMet = {
+      ...currentStudentData.extraConditionsMet,
+      [goalName]: newConditions
+    };
+
+    updateStudentData(currentStudentName, { extraConditionsMet: newExtraConditionsMet });
+  };
+
+  const getGoalStatus = () => {
+    if (!isMastery) return null;
+    const rule = currentUnit.rule;
+    if (!rule) return null;
+
+    const correctCount = currentUnit.rows.reduce((sum, r) => sum + (currentStudentData.rowScores?.[r.id] || 0), 0);
+    const conditionsMet = currentStudentData.extraConditionsMet?.[currentUnit.id] || {};
+    const conditionsMetCount = Object.values(conditionsMet).filter(Boolean).length;
+
+    // Check Rule Defaults
+    const requiredConditions = rule.minConditions !== undefined ? rule.minConditions : rule.extraConditions.length;
+    const threshold = rule.threshold ?? Math.ceil(currentUnit.rows.length * 0.55);
+
+    const isPassed = correctCount >= threshold && conditionsMetCount >= requiredConditions;
+
+    return isPassed;
+  };
+
+  const currentConditionsCount = useMemo(() => {
+    if (!isMastery || !currentUnit.rule) return 0;
+    const conditionsMet = currentStudentData.extraConditionsMet?.[currentUnit.id] || {};
+    return Object.values(conditionsMet).filter(Boolean).length;
+  }, [currentStudentData, currentUnit, isMastery]);
+
+  const requiredConditionsCount = isMastery && currentUnit.rule ? (currentUnit.rule.minConditions !== undefined ? currentUnit.rule.minConditions : currentUnit.rule.extraConditions.length) : 0;
+
   // -- Progress Stats --
   const totalStudents = isFirstRow ? initialStudentNames.length : studentOrder.length;
-  const totalCells = rubric.rows.length * totalStudents;
+  // Approximation of cells for stats
+  const totalCells = gradingUnits.reduce((acc, unit) => acc + (unit.rows.length * totalStudents), 0);
   const completedCells = useMemo(() => {
     let count = 0;
     studentsData.forEach(data => {
@@ -468,21 +567,18 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
   }, [studentsData]);
   const progressPercent = totalCells > 0 ? (completedCells / totalCells) * 100 : 0;
 
-  const studentsGradedThisRow = isFirstRow ? studentOrder.length : currentStudentIndex;
-  const rowProgress = totalStudents > 0 ? ((studentsGradedThisRow) / totalStudents) * 100 : 0;
+  const studentsGradedThisUnit = isFirstRow ? studentOrder.length : currentStudentIndex;
+  const unitProgress = totalStudents > 0 ? ((studentsGradedThisUnit) / totalStudents) * 100 : 0;
 
-  // Average Time Calc (Excluding first student of the session)
+  // Avg Time Calc
   const avgTimePerStudent = useMemo(() => {
-    // We need at least 2 students graded in this session to have a meaningful "average of others"
     if (sessionGradedCount <= 1) {
-      // Fallback: if we have 1, use that (provisional), else 0
       if (sessionGradedCount === 1 && firstStudentDuration) return Math.round(firstStudentDuration / 1000);
       return 0;
     }
-
     const totalElapsed = Date.now() - sessionStartTime;
     const timeOnOthers = totalElapsed - (firstStudentDuration || 0);
-    const countOthers = sessionGradedCount - 1;
+    const countOthers = Math.max(1, sessionGradedCount - 1); // Avoid div by 0
 
     return Math.max(0, Math.round((timeOnOthers / 1000) / countOthers));
   }, [sessionGradedCount, sessionStartTime, firstStudentDuration]);
@@ -573,215 +669,235 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
           </CardContent>
         </Card>
 
-        <div className="grid gap-6 lg:grid-cols-3">
-          {/* Current Row Info */}
-          <Card className="shadow-soft lg:col-span-1">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Target className="h-4 w-4" />
-                Current Learning Goal
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
-                <p className="font-medium text-lg">{currentRow?.name}</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Row {currentRowIndex + 1} of {rubric.rows.length}
-                </p>
-                {/* Visual indicator of calculation points available */}
-                {currentRow?.calculationPoints && currentRow.calculationPoints > 0 && (
-                  <div className="mt-2 text-xs font-semibold text-amber-600 flex items-center gap-1">
-                    <span>⚠️ Includes {currentRow.calculationPoints} calculation points</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-4 space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Students graded for this row</span>
-                  <span className="font-medium">{studentsGradedThisRow} / {totalStudents}</span>
+        {/* Left Panel: Unit Info */}
+        <Card className="shadow-soft lg:col-span-1">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Target className="h-4 w-4" />
+              {isMastery ? 'Current Goal' : 'Current Item'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
+              <p className="font-medium text-lg">{currentUnit?.name}</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Item {currentUnitIndex + 1} of {gradingUnits.length}
+              </p>
+              {!isMastery && currentUnit.rows[0]?.calculationPoints && currentUnit.rows[0].calculationPoints! > 0 && (
+                <div className="mt-2 text-xs font-semibold text-amber-600 flex items-center gap-1">
+                  <span>⚠️ Includes {currentUnit.rows[0].calculationPoints} calculation points</span>
                 </div>
-                <Progress value={rowProgress} className="h-1.5" />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Main Grading Area */}
-          <Card className="shadow-soft lg:col-span-2">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                {isFirstRow ? 'Grade Student' : `Grading: ${currentStudentName}`}
-              </CardTitle>
-              {!isFirstRow && (
-                <CardDescription>
-                  Student {currentStudentIndex + 1} of {studentOrder.length}
-                </CardDescription>
               )}
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Student Name Input (First Row Only) */}
-              {isFirstRow && (
-                <div className="space-y-2 relative">
-                  <Label htmlFor="student-name">Student Name</Label>
-                  <Input
-                    ref={inputRef}
-                    id="student-name"
-                    placeholder="Type or select student name..."
-                    value={nameInput}
-                    onChange={(e) => {
-                      setNameInput(e.target.value);
-                      setShowSuggestions(true);
-                    }}
-                    onFocus={() => setShowSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                    autoFocus
-                  />
-                  {showSuggestions && availableNames.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-48 overflow-auto">
-                      {availableNames.slice(0, 10).map((name) => (
-                        <button
-                          key={name}
-                          className="w-full px-3 py-2 text-left hover:bg-accent text-sm"
-                          onMouseDown={() => handleSuggestionClick(name)}
-                        >
-                          {name}
-                        </button>
-                      ))}
+              {isMastery && currentUnit.rule && (
+                <div className="mt-2 space-y-1">
+                  <Badge variant="outline" className="w-full justify-center">
+                    Threshold: {currentUnit.rule.threshold} / {currentUnit.rows.length} correct
+                  </Badge>
+                  {getGoalStatus() !== null && (
+                    <div className={cn(
+                      "text-center font-bold py-1 px-2 rounded mt-2 border transition-colors duration-300",
+                      getGoalStatus()
+                        ? "bg-green-100 text-green-700 border-green-200"
+                        : "bg-red-100 text-red-700 border-red-200"
+                    )}>
+                      {getGoalStatus() ? 'BEHEERST' : 'NIET BEHEERST'}
+                    </div>
+                  )}
+                  {currentUnit.rule.extraConditions.length > 0 && (
+                    <div className="text-xs text-center text-muted-foreground mt-1">
+                      Conditions: {currentConditionsCount} / {requiredConditionsCount}
                     </div>
                   )}
                 </div>
               )}
+            </div>
 
-              {/* Column Selection or Exam Input */}
-              <div className="space-y-2">
-                <Label>{isExam ? 'Enter Score' : 'Select Level'}</Label>
+            <div className="mt-4 space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Students graded for this item</span>
+                <span className="font-medium">{studentsGradedThisUnit} / {totalStudents}</span>
+              </div>
+              <Progress value={unitProgress} className="h-1.5" />
+            </div>
+          </CardContent>
+        </Card>
 
-                {isExam ? (
-                  <div className="space-y-4">
-                    {currentRow?.description && (
-                      <p className="text-sm text-muted-foreground bg-secondary/10 p-3 rounded-md">
-                        {currentRow.description}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-4">
-                      <div className="flex-1">
-                        <div className="relative">
-                          <Input
-                            type="number"
-                            min="0"
-                            max={currentRow?.maxPoints || 100}
-                            step="0.5"
-                            value={currentManualScore !== undefined ? currentManualScore : ''}
-                            onChange={(e) => {
-                              const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
-                              setCurrentManualScore(val);
-                            }}
-                            className="h-14 text-lg"
-                            placeholder="Points..."
-                            autoFocus={!isFirstRow} // Focus input if not first row (where name input is focused)
-                          />
-                          <span className="absolute right-4 top-4 text-muted-foreground font-medium">
-                            / {currentRow?.maxPoints || 0}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="grid gap-3">
-                    {rubric.columns.map((col) => {
-                      const criteria = getCriteriaValue(currentRow?.id || '', col.id);
-                      const isSelected = selectedColumn === col.id;
-
-                      return (
-                        <button
-                          key={col.id}
-                          onClick={() => handleColumnSelect(col.id)}
-                          className={cn(
-                            "w-full p-4 rounded-lg border-2 text-left transition-all",
-                            "hover:border-primary/50 hover:bg-primary/5",
-                            isSelected
-                              ? "border-primary bg-primary/10 ring-2 ring-primary/20"
-                              : "border-muted bg-muted/30"
-                          )}
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="font-medium">{col.name}</span>
-                            <span className="text-sm text-muted-foreground">{col.points} pts</span>
-                          </div>
-                          <p className={cn(
-                            "text-sm",
-                            isSelected ? "text-foreground" : "text-muted-foreground"
-                          )}>
-                            {criteria || <em className="opacity-50">No criteria</em>}
-                          </p>
-                          {isSelected && (
-                            <div className="flex items-center gap-2 mt-2 text-primary">
-                              <Check className="h-4 w-4" />
-                              <span className="text-sm font-medium">Selected</span>
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
+        {/* Main Grading Area */}
+        <Card className="shadow-soft lg:col-span-2">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              {isFirstRow ? 'Grade Student' : `Grading: ${currentStudentName}`}
+            </CardTitle>
+            {!isFirstRow && (
+              <CardDescription>
+                Student {currentStudentIndex + 1} of {studentOrder.length}
+              </CardDescription>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Student Name Input (First Row Only) */}
+            {isFirstRow && (
+              <div className="space-y-2 relative">
+                <Label htmlFor="student-name">Student Name</Label>
+                <Input
+                  ref={inputRef}
+                  id="student-name"
+                  placeholder="Type or select student name..."
+                  value={nameInput}
+                  onChange={(e) => {
+                    setNameInput(e.target.value);
+                    setShowSuggestions(true);
+                  }}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                  autoFocus
+                />
+                {showSuggestions && availableNames.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-48 overflow-auto">
+                    {availableNames.slice(0, 10).map((name) => (
+                      <button
+                        key={name}
+                        className="w-full px-3 py-2 text-left hover:bg-accent text-sm"
+                        onMouseDown={() => handleSuggestionClick(name)}
+                      >
+                        {name}
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
+            )}
 
-              {/* Calculation Points Checkbox */}
-              {(selectedColumn || (isExam && currentManualScore !== undefined)) && currentRow?.calculationPoints && currentRow.calculationPoints > 0 && (
-                <div className="p-4 bg-muted/30 rounded-lg border border-dashed border-muted-foreground/50">
-                  <div className="flex items-start gap-3">
-                    <input
-                      type="checkbox"
-                      id="calculation-check"
-                      checked={calculationCorrect}
-                      onChange={(e) => setCalculationCorrect(e.target.checked)}
-                      className="mt-1 h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary"
-                    />
-                    <div className="grid gap-1.5 leading-none">
-                      <Label htmlFor="calculation-check" className="text-base font-medium cursor-pointer">
-                        Award Calculation Points (+{currentRow.calculationPoints})
-                      </Label>
-                      <p className="text-sm text-muted-foreground">
-                        Uncheck if the student made a calculation error, even if the logic was correct.
-                      </p>
+            {/* Column Selection or Exam Input */}
+            <div className="space-y-2">
+              <Label>{isExam ? 'Enter Score' : 'Select Level'}</Label>
+
+              {isExam ? (
+                <div className="space-y-4">
+                  {currentRow?.description && (
+                    <p className="text-sm text-muted-foreground bg-secondary/10 p-3 rounded-md">
+                      {currentRow.description}
+                    </p>
+                  )}
+                  <div className="flex items-center gap-4">
+                    <div className="flex-1">
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          min="0"
+                          max={currentRow?.maxPoints || 100}
+                          step="0.5"
+                          value={currentManualScore !== undefined ? currentManualScore : ''}
+                          onChange={(e) => {
+                            const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
+                            setCurrentManualScore(val);
+                          }}
+                          className="h-14 text-lg"
+                          placeholder="Points..."
+                          autoFocus={!isFirstRow} // Focus input if not first row (where name input is focused)
+                        />
+                        <span className="absolute right-4 top-4 text-muted-foreground font-medium">
+                          / {currentRow?.maxPoints || 0}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              )}
+              ) : (
+                <div className="grid gap-3">
+                  {rubric.columns.map((col) => {
+                    const criteria = getCriteriaValue(currentRow?.id || '', col.id);
+                    const isSelected = selectedColumn === col.id;
 
-              {/* Cell Feedback */}
-              {(selectedColumn || (isExam && currentManualScore !== undefined)) && (
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <MessageSquare className="h-4 w-4" />
-                    Feedback for this cell (optional)
-                  </Label>
-                  <Textarea
-                    placeholder="Add specific feedback..."
-                    value={currentCellFeedback}
-                    onChange={(e) => setCurrentCellFeedback(e.target.value)}
-                    className="min-h-[80px]"
-                  />
+                    return (
+                      <button
+                        key={col.id}
+                        onClick={() => handleColumnSelect(col.id)}
+                        className={cn(
+                          "w-full p-4 rounded-lg border-2 text-left transition-all",
+                          "hover:border-primary/50 hover:bg-primary/5",
+                          isSelected
+                            ? "border-primary bg-primary/10 ring-2 ring-primary/20"
+                            : "border-muted bg-muted/30"
+                        )}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-medium">{col.name}</span>
+                          <span className="text-sm text-muted-foreground">{col.points} pts</span>
+                        </div>
+                        <p className={cn(
+                          "text-sm",
+                          isSelected ? "text-foreground" : "text-muted-foreground"
+                        )}>
+                          {criteria || <em className="opacity-50">No criteria</em>}
+                        </p>
+                        {isSelected && (
+                          <div className="flex items-center gap-2 mt-2 text-primary">
+                            <Check className="h-4 w-4" />
+                            <span className="text-sm font-medium">Selected</span>
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
+            </div>
 
-              {/* Next Student Button */}
-              <Button
-                onClick={handleNextStudent}
-                disabled={!currentStudentName.trim() || (isExam ? currentManualScore === undefined : !selectedColumn)}
-                className="w-full gap-2"
-                size="lg"
-              >
-                Next Student
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
+            {/* Calculation Points Checkbox */}
+            {(selectedColumn || (isExam && currentManualScore !== undefined)) && currentRow?.calculationPoints && currentRow.calculationPoints > 0 && (
+              <div className="p-4 bg-muted/30 rounded-lg border border-dashed border-muted-foreground/50">
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="calculation-check"
+                    checked={calculationCorrect}
+                    onChange={(e) => setCalculationCorrect(e.target.checked)}
+                    className="mt-1 h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                  <div className="grid gap-1.5 leading-none">
+                    <Label htmlFor="calculation-check" className="text-base font-medium cursor-pointer">
+                      Award Calculation Points (+{currentRow.calculationPoints})
+                    </Label>
+                    <p className="text-sm text-muted-foreground">
+                      Uncheck if the student made a calculation error, even if the logic was correct.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Cell Feedback */}
+            {(selectedColumn || (isExam && currentManualScore !== undefined)) && (
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  Feedback for this cell (optional)
+                </Label>
+                <Textarea
+                  placeholder="Add specific feedback..."
+                  value={currentCellFeedback}
+                  onChange={(e) => setCurrentCellFeedback(e.target.value)}
+                  className="min-h-[80px]"
+                />
+              </div>
+            )}
+
+            {/* Next Student Button */}
+            <Button
+              onClick={handleNextStudent}
+              disabled={!currentStudentName.trim() || (isExam ? currentManualScore === undefined : !selectedColumn)}
+              className="w-full gap-2"
+              size="lg"
+            >
+              Next Student
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     </div>
+    </div >
   );
 }

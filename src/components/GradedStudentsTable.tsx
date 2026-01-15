@@ -63,12 +63,16 @@ export function GradedStudentsTable({ rubric, students: propStudents, hideClear 
         doc.setTextColor(0, 0, 0);
         doc.text(`Mastery Report`, pageWidth - 14, 35, { align: 'right' });
 
-        // Group by Learning Goal
-        const goals = rubric.rows.reduce((acc, row) => {
+        // Group by Learning Goal (Sorted by First Occurrence)
+        const goals = [];
+        const seenGoals = new Set<string>();
+        rubric.rows.forEach(row => {
           const goal = row.learningGoal || 'General';
-          if (!acc.includes(goal)) acc.push(goal);
-          return acc;
-        }, [] as string[]);
+          if (!seenGoals.has(goal)) {
+            seenGoals.add(goal);
+            goals.push(goal);
+          }
+        });
 
         goals.forEach(goalName => {
           const rows = rubric.rows.filter(r => (r.learningGoal || 'General') === goalName);
@@ -78,17 +82,27 @@ export function GradedStudentsTable({ rubric, students: propStudents, hideClear 
           const correctCount = rows.reduce((sum, r) => sum + (student.rowScores?.[r.id] || 0), 0);
           const conditionsMet = student.extraConditionsMet?.[goalName] || {};
           const conditionsMetCount = Object.values(conditionsMet).filter(Boolean).length;
+
           const totalConditions = rule?.extraConditions.length || 0;
+          // Use minConditions logic
+          const requiredConditions = rule?.minConditions !== undefined ? rule.minConditions : totalConditions;
 
           const threshold = rule?.threshold ?? Math.ceil(rows.length * 0.55);
-          const isPassed = correctCount >= threshold && conditionsMetCount === totalConditions;
+          const isPassed = correctCount >= threshold && conditionsMetCount >= requiredConditions;
 
           const statusColor = isPassed ? [22, 163, 74] : [220, 38, 38]; // Green or Red
           const statusText = isPassed ? 'Beheerst' : 'Niet Beheerst';
 
           // Header Row for Goal
           tableBody.push([{ content: `${goalName}`, colSpan: 2, styles: { fillColor: [240, 240, 240], fontStyle: 'bold', fontSize: 11 } }]);
-          tableBody.push([{ content: `Status: ${statusText}`, colSpan: 2, styles: { textColor: statusColor, fontStyle: 'bold' } }]);
+
+          // Show Status and Condition Progress if applicable
+          let statusString = `Status: ${statusText}`;
+          if (rule && rule.extraConditions.length > 0) {
+            statusString += ` (Conditions: ${conditionsMetCount}/${requiredConditions})`;
+          }
+
+          tableBody.push([{ content: statusString, colSpan: 2, styles: { textColor: statusColor, fontStyle: 'bold' } }]);
 
           // Questions Details
           const questionLines: string[] = [];
