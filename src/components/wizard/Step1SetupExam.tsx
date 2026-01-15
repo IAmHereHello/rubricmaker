@@ -3,6 +3,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { FileText, ArrowRight, ArrowLeft } from 'lucide-react';
 import { useRubricStore } from '@/hooks/useRubricStore';
 
@@ -116,6 +117,40 @@ export function Step1SetupExam({ onNext, onBack }: Step1SetupExamProps) {
                             <p className="text-sm text-destructive">Please enter a valid number of questions</p>
                         )}
                         <p className="text-xs text-muted-foreground">You can add or remove questions later.</p>
+                    </div>
+
+                    <div className="space-y-3">
+                        <Label className="text-base font-medium">Scoring Method</Label>
+                        <RadioGroup
+                            value={currentRubric?.gradingMethod || 'points'}
+                            onValueChange={(value) => updateCurrentRubric({ gradingMethod: value as 'points' | 'mastery' })}
+                            className="grid grid-cols-2 gap-4"
+                        >
+                            <div>
+                                <RadioGroupItem value="points" id="method-points" className="peer sr-only" />
+                                <Label
+                                    htmlFor="method-points"
+                                    className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all"
+                                >
+                                    <span className="text-lg font-semibold mb-1">Points Based</span>
+                                    <span className="text-xs text-muted-foreground text-center">
+                                        Traditional scoring. Each question has a point value.
+                                    </span>
+                                </Label>
+                            </div>
+                            <div>
+                                <RadioGroupItem value="mastery" id="method-mastery" className="peer sr-only" />
+                                <Label
+                                    htmlFor="method-mastery"
+                                    className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all"
+                                >
+                                    <span className="text-lg font-semibold mb-1">Mastery Based</span>
+                                    <span className="text-xs text-muted-foreground text-center">
+                                        Score by Learning Goals (Leerdoelen). Pass/Fail per goal.
+                                    </span>
+                                </Label>
+                            </div>
+                        </RadioGroup>
                     </div>
 
                     <div className="flex gap-3">

@@ -9,12 +9,12 @@ const HorizontalGrade = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { getRubricById } = useRubricStore();
-  
+
   const rubric = getRubricById(rubricId || '');
   const locationState = location.state as { studentNames?: string[]; className?: string } | null;
   const studentNames = locationState?.studentNames || [];
   const className = locationState?.className || 'Unnamed Class';
-  
+
   if (!rubric) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -27,7 +27,7 @@ const HorizontalGrade = () => {
       </div>
     );
   }
-  
+
   if (studentNames.length === 0) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -40,7 +40,7 @@ const HorizontalGrade = () => {
       </div>
     );
   }
-  
+
   return <HorizontalGradingView rubric={rubric} initialStudentNames={studentNames} className={className} />;
 };
 

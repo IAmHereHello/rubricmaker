@@ -117,35 +117,39 @@ export function Step2Questions({ onNext, onBack }: Step2QuestionsProps) {
                                     </div>
 
                                     <div className="flex flex-wrap items-end gap-3 pt-2">
-                                        {/* Max Points */}
-                                        <div className="space-y-1.5">
-                                            <Label htmlFor={`points-${row.id}`}>Max Points</Label>
-                                            <Input
-                                                id={`points-${row.id}`}
-                                                type="number"
-                                                min="0.5"
-                                                step="0.5"
-                                                className="w-24"
-                                                value={row.maxPoints || 0}
-                                                onChange={(e) => updateRow(row.id, { maxPoints: parseFloat(e.target.value) || 0 })}
-                                            />
-                                        </div>
-
-                                        {/* Calc Points */}
-                                        <div className="space-y-1.5">
-                                            <div className="flex items-center gap-1.5">
-                                                <Calculator className="h-3.5 w-3.5 text-muted-foreground" />
-                                                <Label htmlFor={`calc-${row.id}`}>Calc. Points</Label>
+                                        {/* Max Points - Hide for Mastery (Fixed to 1) */}
+                                        {currentRubric?.gradingMethod !== 'mastery' && (
+                                            <div className="space-y-1.5">
+                                                <Label htmlFor={`points-${row.id}`}>Max Points</Label>
+                                                <Input
+                                                    id={`points-${row.id}`}
+                                                    type="number"
+                                                    min="0.5"
+                                                    step="0.5"
+                                                    className="w-24"
+                                                    value={row.maxPoints || 0}
+                                                    onChange={(e) => updateRow(row.id, { maxPoints: parseFloat(e.target.value) || 0 })}
+                                                />
                                             </div>
-                                            <Input
-                                                id={`calc-${row.id}`}
-                                                type="number"
-                                                min="0"
-                                                className="w-24"
-                                                value={row.calculationPoints || 0}
-                                                onChange={(e) => updateRow(row.id, { calculationPoints: parseInt(e.target.value) || 0 })}
-                                            />
-                                        </div>
+                                        )}
+
+                                        {/* Calc Points - Hide for Mastery */}
+                                        {currentRubric?.gradingMethod !== 'mastery' && (
+                                            <div className="space-y-1.5">
+                                                <div className="flex items-center gap-1.5">
+                                                    <Calculator className="h-3.5 w-3.5 text-muted-foreground" />
+                                                    <Label htmlFor={`calc-${row.id}`}>Calc. Points</Label>
+                                                </div>
+                                                <Input
+                                                    id={`calc-${row.id}`}
+                                                    type="number"
+                                                    min="0"
+                                                    className="w-24"
+                                                    value={row.calculationPoints || 0}
+                                                    onChange={(e) => updateRow(row.id, { calculationPoints: parseInt(e.target.value) || 0 })}
+                                                />
+                                            </div>
+                                        )}
 
                                         {/* Bonus Toggle */}
                                         <div className="flex items-center gap-2 border rounded-md px-3 h-10 ml-auto">

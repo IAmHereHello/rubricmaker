@@ -49,6 +49,7 @@ export interface GradedStudent {
   gradedAt: Date;
   className?: string; // Class name for grouping
   rowScores?: { [rowId: string]: number }; // For exams: Explicit point value given per row/question
+  extraConditionsMet?: { [goalName: string]: { [conditionIndex: number]: boolean } }; // For mastery exams
 }
 
 export type RubricType = 'assignment' | 'exam';
@@ -57,6 +58,8 @@ export interface Rubric {
   id: string;
   name: string;
   type: RubricType;
+  gradingMethod?: 'points' | 'mastery'; // For exams: 'points' is default
+  learningGoalRules?: LearningGoalRule[]; // For mastery exams
   columns: Column[];
   rows: Row[];
   criteria: CriteriaCell[];
@@ -96,6 +99,14 @@ export interface StudentGradingData {
   calculationCorrect?: { [rowId: string]: boolean };
   cellFeedback: CellFeedback[];
   generalFeedback: string;
+  rowScores?: { [rowId: string]: number }; // For exams
+  extraConditionsMet?: { [goalName: string]: { [conditionIndex: number]: boolean } }; // For mastery exams
 }
 
 export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
+
+export interface LearningGoalRule {
+  learningGoal: string;
+  threshold: number; // Number of correct questions needed
+  extraConditions: string[]; // List of custom checkbox labels
+}

@@ -81,7 +81,7 @@ export const exportGradingSession = (data: ExportData) => {
         const student = sessionState.studentsData[name];
         return {
             'Student Name': name,
-            'Cells Graded': student ? Object.keys(student.selections).length : 0,
+            'Cells Graded': student ? (Object.keys(student.selections).length + (student.rowScores ? Object.keys(student.rowScores).length : 0)) : 0,
             'Total Score So Far': 'N/A (Calculated on finish)'
         };
     });

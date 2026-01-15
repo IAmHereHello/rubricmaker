@@ -86,8 +86,12 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
   const [showSummary, setShowSummary] = useState(false);
   // Current column selection for this student+row
   const [selectedColumn, setSelectedColumn] = useState<string | null>(null);
+  // Manual score for exams
+  const [currentManualScore, setCurrentManualScore] = useState<number | undefined>(undefined);
   // Calculation point checkbox state
   const [calculationCorrect, setCalculationCorrect] = useState<boolean>(true); // Default to true
+
+  const isExam = rubric.type === 'exam';
 
   // Time Tracking State
   const [sessionStartTime] = useState<number>(Date.now());
@@ -214,6 +218,29 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
     let total = 0;
 
     rubric.rows.forEach((row) => {
+      // Exam Mode
+      if (isExam) {
+        const score = data.rowScores?.[row.id] || 0;
+        let rowPoints = score;
+
+        if (row.maxPoints && score > row.maxPoints) rowPoints = row.maxPoints;
+
+        // Add Calc points if checked?
+        // Horizontal view DOES have calc points checkbox.
+        // Logic below handles it if calculationPoints > 0
+        if (row.calculationPoints && row.calculationPoints > 0) {
+          const isCorrect = data.calculationCorrect?.[row.id] !== false;
+          if (isCorrect) {
+            rowPoints += row.calculationPoints;
+          }
+        }
+
+        rowScores[row.id] = rowPoints;
+        total += rowPoints;
+        return;
+      }
+
+      // Assignment Mode
       const selectedColumnId = data.selections[row.id];
 
       // Points from Level Selection
@@ -246,7 +273,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
     });
 
     return { totalScore: total, rowScores };
-  }, [rubric, studentsData]);
+  }, [rubric, studentsData, isExam]);
 
   const getStudentStatus = useCallback((studentName: string): Threshold | null => {
     const { totalScore } = calculateStudentScore(studentName);
@@ -257,6 +284,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
     const hasLowestColumnSelected = data
       ? rubric.rows.some(row => {
         if (row.isBonus) return false; // Ignore bonus rows
+        if (isExam) return false; // No column logic for exams
         return data.selections[row.id] === lowestColumnId;
       })
       : false;
@@ -286,12 +314,21 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
   };
 
   const handleNextStudent = () => {
-    if (!currentStudentName || !selectedColumn) return;
+    if (!currentStudentName || (isExam ? currentManualScore === undefined : !selectedColumn)) return;
 
     const studentData = getStudentData(currentStudentName);
 
     // Update Selections
-    const newSelections = { ...studentData.selections, [currentRow.id]: selectedColumn };
+    const newSelections = { ...studentData.selections };
+    if (!isExam && selectedColumn) {
+      newSelections[currentRow.id] = selectedColumn;
+    }
+
+    // Update Scores (Exam)
+    const newRowScores = { ...studentData.rowScores };
+    if (isExam && currentManualScore !== undefined) {
+      newRowScores[currentRow.id] = currentManualScore;
+    }
 
     // Update Calculation Correctness
     const newCalculationCorrect = { ...studentData.calculationCorrect };
@@ -301,20 +338,23 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
 
     // Update Feedback
     let newCellFeedback = [...studentData.cellFeedback];
-    if (currentCellFeedback) {
+    const feedbackKeyColumn = isExam ? 'manual' : selectedColumn; // Use 'manual' as key for exam
+
+    if (currentCellFeedback && feedbackKeyColumn) {
       const existingIndex = newCellFeedback.findIndex(
-        f => f.rowId === currentRow.id && f.columnId === selectedColumn
+        f => f.rowId === currentRow.id && f.columnId === feedbackKeyColumn
       );
       if (existingIndex >= 0) {
-        newCellFeedback[existingIndex] = { rowId: currentRow.id, columnId: selectedColumn, feedback: currentCellFeedback };
+        newCellFeedback[existingIndex] = { rowId: currentRow.id, columnId: feedbackKeyColumn, feedback: currentCellFeedback };
       } else {
-        newCellFeedback.push({ rowId: currentRow.id, columnId: selectedColumn, feedback: currentCellFeedback });
+        newCellFeedback.push({ rowId: currentRow.id, columnId: feedbackKeyColumn, feedback: currentCellFeedback });
       }
     }
 
     // Save to State
     updateStudentData(currentStudentName, {
       selections: newSelections,
+      rowScores: newRowScores,
       cellFeedback: newCellFeedback,
       generalFeedback: studentData.generalFeedback || generalFeedback,
       calculationCorrect: newCalculationCorrect
@@ -336,6 +376,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
 
     // Reset inputs
     setSelectedColumn(null);
+    setCurrentManualScore(undefined);
     setCurrentCellFeedback('');
     setGeneralFeedback('');
     // Reset calculation checkbox for next student (default to true)
@@ -364,6 +405,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
       setCurrentRowIndex(prev => prev + 1);
       setCurrentStudentIndex(0);
       setSelectedColumn(null);
+      setCurrentManualScore(undefined);
     }
   };
 
@@ -379,6 +421,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
           id: Math.random().toString(36).substr(2, 9),
           studentName: data.studentName,
           selections: data.selections,
+          rowScores: data.rowScores,
           cellFeedback: data.cellFeedback,
           calculationCorrect: data.calculationCorrect, // Save calc status
           generalFeedback: data.generalFeedback,
@@ -395,7 +438,15 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
 
     // Clear LocalStorage Session
     clearSession();
-    setShowSummary(true);
+
+    // Notify User
+    toast({
+      title: "Grading Complete",
+      description: "All students saved. Redirecting to results...",
+    });
+
+    // Redirect to Results
+    navigate('/results');
   };
 
   const handleSuggestionClick = (name: string) => {
@@ -411,6 +462,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
     let count = 0;
     studentsData.forEach(data => {
       count += Object.keys(data.selections).length;
+      if (data.rowScores) count += Object.keys(data.rowScores).length;
     });
     return count;
   }, [studentsData]);
@@ -601,50 +653,84 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
                 </div>
               )}
 
-              {/* Column Selection */}
+              {/* Column Selection or Exam Input */}
               <div className="space-y-2">
-                <Label>Select Level</Label>
-                <div className="grid gap-3">
-                  {rubric.columns.map((col) => {
-                    const criteria = getCriteriaValue(currentRow?.id || '', col.id);
-                    const isSelected = selectedColumn === col.id;
+                <Label>{isExam ? 'Enter Score' : 'Select Level'}</Label>
 
-                    return (
-                      <button
-                        key={col.id}
-                        onClick={() => handleColumnSelect(col.id)}
-                        className={cn(
-                          "w-full p-4 rounded-lg border-2 text-left transition-all",
-                          "hover:border-primary/50 hover:bg-primary/5",
-                          isSelected
-                            ? "border-primary bg-primary/10 ring-2 ring-primary/20"
-                            : "border-muted bg-muted/30"
-                        )}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-medium">{col.name}</span>
-                          <span className="text-sm text-muted-foreground">{col.points} pts</span>
+                {isExam ? (
+                  <div className="space-y-4">
+                    {currentRow?.description && (
+                      <p className="text-sm text-muted-foreground bg-secondary/10 p-3 rounded-md">
+                        {currentRow.description}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-4">
+                      <div className="flex-1">
+                        <div className="relative">
+                          <Input
+                            type="number"
+                            min="0"
+                            max={currentRow?.maxPoints || 100}
+                            step="0.5"
+                            value={currentManualScore !== undefined ? currentManualScore : ''}
+                            onChange={(e) => {
+                              const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
+                              setCurrentManualScore(val);
+                            }}
+                            className="h-14 text-lg"
+                            placeholder="Points..."
+                            autoFocus={!isFirstRow} // Focus input if not first row (where name input is focused)
+                          />
+                          <span className="absolute right-4 top-4 text-muted-foreground font-medium">
+                            / {currentRow?.maxPoints || 0}
+                          </span>
                         </div>
-                        <p className={cn(
-                          "text-sm",
-                          isSelected ? "text-foreground" : "text-muted-foreground"
-                        )}>
-                          {criteria || <em className="opacity-50">No criteria</em>}
-                        </p>
-                        {isSelected && (
-                          <div className="flex items-center gap-2 mt-2 text-primary">
-                            <Check className="h-4 w-4" />
-                            <span className="text-sm font-medium">Selected</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid gap-3">
+                    {rubric.columns.map((col) => {
+                      const criteria = getCriteriaValue(currentRow?.id || '', col.id);
+                      const isSelected = selectedColumn === col.id;
+
+                      return (
+                        <button
+                          key={col.id}
+                          onClick={() => handleColumnSelect(col.id)}
+                          className={cn(
+                            "w-full p-4 rounded-lg border-2 text-left transition-all",
+                            "hover:border-primary/50 hover:bg-primary/5",
+                            isSelected
+                              ? "border-primary bg-primary/10 ring-2 ring-primary/20"
+                              : "border-muted bg-muted/30"
+                          )}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-medium">{col.name}</span>
+                            <span className="text-sm text-muted-foreground">{col.points} pts</span>
                           </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+                          <p className={cn(
+                            "text-sm",
+                            isSelected ? "text-foreground" : "text-muted-foreground"
+                          )}>
+                            {criteria || <em className="opacity-50">No criteria</em>}
+                          </p>
+                          {isSelected && (
+                            <div className="flex items-center gap-2 mt-2 text-primary">
+                              <Check className="h-4 w-4" />
+                              <span className="text-sm font-medium">Selected</span>
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Calculation Points Checkbox */}
-              {selectedColumn && currentRow?.calculationPoints && currentRow.calculationPoints > 0 && (
+              {(selectedColumn || (isExam && currentManualScore !== undefined)) && currentRow?.calculationPoints && currentRow.calculationPoints > 0 && (
                 <div className="p-4 bg-muted/30 rounded-lg border border-dashed border-muted-foreground/50">
                   <div className="flex items-start gap-3">
                     <input
@@ -667,7 +753,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
               )}
 
               {/* Cell Feedback */}
-              {selectedColumn && (
+              {(selectedColumn || (isExam && currentManualScore !== undefined)) && (
                 <div className="space-y-2">
                   <Label className="flex items-center gap-2">
                     <MessageSquare className="h-4 w-4" />
@@ -685,7 +771,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
               {/* Next Student Button */}
               <Button
                 onClick={handleNextStudent}
-                disabled={!currentStudentName.trim() || !selectedColumn}
+                disabled={!currentStudentName.trim() || (isExam ? currentManualScore === undefined : !selectedColumn)}
                 className="w-full gap-2"
                 size="lg"
               >
@@ -696,26 +782,6 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
           </Card>
         </div>
       </div>
-
-      {/* Summary Modal */}
-      <Dialog open={showSummary} onOpenChange={setShowSummary}>
-        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-center text-2xl">Horizontal Grading Complete!</DialogTitle>
-            <DialogDescription className="text-center">
-              All students have been graded. Review the results below.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <GradedStudentsTable rubric={updatedRubric} />
-          </div>
-          <DialogFooter className="sm:justify-center">
-            <Button onClick={() => navigate('/')} className="w-full sm:w-auto">
-              Back to Dashboard
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

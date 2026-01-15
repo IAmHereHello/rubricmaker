@@ -37,12 +37,12 @@ export function GradingModeModal({ open, onOpenChange, onSelectMode }: GradingMo
       setClassNameTouched(true);
       return;
     }
-    
+
     const names = studentNamesText
       .split('\n')
       .map(name => name.trim())
       .filter(name => name.length > 0);
-    
+
     if (names.length > 0) {
       onSelectMode('horizontal', names, className.trim());
       resetState();
@@ -95,13 +95,13 @@ export function GradingModeModal({ open, onOpenChange, onSelectMode }: GradingMo
                   <User className="h-6 w-6 text-primary" />
                 </div>
                 <div className="space-y-1">
-                  <h3 className="font-semibold">Vertical Grading</h3>
+                  <h3 className="font-semibold">Individual Grading</h3>
                   <p className="text-sm text-muted-foreground">
                     Grade one student at a time across all learning goals. Complete one student's rubric before moving to the next.
                   </p>
                 </div>
               </button>
-              
+
               <button
                 onClick={() => handleModeSelect('horizontal')}
                 className={cn(
@@ -149,7 +149,7 @@ export function GradingModeModal({ open, onOpenChange, onSelectMode }: GradingMo
                   <p className="text-sm text-destructive">Please enter a class name</p>
                 )}
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="student-names">Student Names</Label>
                 <Textarea
@@ -163,13 +163,13 @@ Alex Johnson
                   className="min-h-[160px] font-mono text-sm"
                 />
               </div>
-              
+
               {parsedNames.length > 0 && (
                 <p className="text-sm text-muted-foreground">
                   {parsedNames.length} student{parsedNames.length !== 1 ? 's' : ''} detected
                 </p>
               )}
-              
+
               <div className="flex gap-3">
                 <Button
                   variant="outline"

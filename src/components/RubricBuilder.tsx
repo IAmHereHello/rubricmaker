@@ -8,6 +8,7 @@ import { Step5Criteria } from '@/components/wizard/Step5Criteria';
 import { Step6Thresholds } from '@/components/wizard/Step6Thresholds';
 import { Step1SetupExam } from '@/components/wizard/Step1SetupExam';
 import { Step2Questions } from '@/components/wizard/Step2Questions';
+import { StepMasteryRules } from '@/components/wizard/StepMasteryRules';
 import { useRubricStore } from '@/hooks/useRubricStore';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
@@ -29,13 +30,20 @@ const EXAM_STEPS = [
   { number: 3, label: 'Thresholds' },
 ];
 
+const MASTERY_EXAM_STEPS = [
+  { number: 1, label: 'Setup' },
+  { number: 2, label: 'Questions' },
+  { number: 3, label: 'Mastery Rules' },
+];
+
 export function RubricBuilder() {
   const [currentStep, setCurrentStep] = useState<WizardStep>(1);
   const { saveRubric, setCurrentRubric, currentRubric } = useRubricStore();
   const navigate = useNavigate();
 
   const isExam = currentRubric?.type === 'exam';
-  const steps = isExam ? EXAM_STEPS : ASSIGNMENT_STEPS;
+  const isMastery = currentRubric?.gradingMethod === 'mastery';
+  const steps = isExam ? (isMastery ? MASTERY_EXAM_STEPS : EXAM_STEPS) : ASSIGNMENT_STEPS;
 
 
   const handleComplete = () => {
@@ -122,10 +130,17 @@ export function RubricBuilder() {
                 />
               )}
               {currentStep === 3 && (
-                <Step6Thresholds
-                  onComplete={handleComplete}
-                  onBack={() => setCurrentStep(2)}
-                />
+                isMastery ? (
+                  <StepMasteryRules
+                    onComplete={handleComplete}
+                    onBack={() => setCurrentStep(2)}
+                  />
+                ) : (
+                  <Step6Thresholds
+                    onComplete={handleComplete}
+                    onBack={() => setCurrentStep(2)}
+                  />
+                )
               )}
             </>
           )}
