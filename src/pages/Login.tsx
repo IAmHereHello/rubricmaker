@@ -31,6 +31,7 @@ const Login = () => {
     };
 
     const handleAuth = async (e: React.FormEvent) => {
+        // Prevent native form submission immediately
         e.preventDefault();
         setLoading(true);
 
