@@ -8,4 +8,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error('Missing Supabase environment variables');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Ensure no trailing slash
+const cleanSupabaseUrl = supabaseUrl.replace(/\/$/, '');
+
+export const supabase = createClient(cleanSupabaseUrl, supabaseAnonKey);

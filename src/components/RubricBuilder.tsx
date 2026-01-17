@@ -46,8 +46,8 @@ export function RubricBuilder() {
   const steps = isExam ? (isMastery ? MASTERY_EXAM_STEPS : EXAM_STEPS) : ASSIGNMENT_STEPS;
 
 
-  const handleComplete = () => {
-    saveRubric();
+  const handleComplete = async () => {
+    await saveRubric();
     navigate('/');
   };
 
