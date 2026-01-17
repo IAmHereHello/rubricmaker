@@ -1,17 +1,19 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { supabase } from '@/lib/supabase';
 import { Rubric, Column, Row, CriteriaCell, Threshold, ScoringMode, GradedStudent, HorizontalGradingSessionState } from '@/types/rubric';
 
 interface RubricStore {
   rubrics: Rubric[];
   currentRubric: Partial<Rubric> | null;
   horizontalSessions: HorizontalGradingSessionState[]; // Saved horizontal grading sessions
+  isLoading: boolean;
 
   // Actions
+  fetchRubrics: () => Promise<void>;
   setCurrentRubric: (rubric: Partial<Rubric> | null) => void;
   updateCurrentRubric: (updates: Partial<Rubric>) => void;
-  saveRubric: () => void;
-  deleteRubric: (id: string) => void;
+  saveRubric: (rubric?: Rubric) => Promise<void>;
+  deleteRubric: (id: string) => Promise<void>;
   getRubricById: (id: string) => Rubric | undefined;
   importRubric: (rubricData: Partial<Rubric>) => void;
 
@@ -55,51 +57,83 @@ interface RubricStore {
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
 export const useRubricStore = create<RubricStore>()(
-  persist(
-    (set, get) => ({
-      rubrics: [],
-      currentRubric: null,
-      horizontalSessions: [],
+  (set, get) => ({
+    rubrics: [],
+    currentRubric: null,
+    horizontalSessions: [],
+    isLoading: false,
 
-      setCurrentRubric: (rubric) => set({ currentRubric: rubric }),
+    fetchRubrics: async () => {
+      set({ isLoading: true });
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          set({ rubrics: [], isLoading: false });
+          return;
+        }
 
-      updateCurrentRubric: (updates) => set((state) => ({
-        currentRubric: state.currentRubric
-          ? { ...state.currentRubric, ...updates }
-          : updates
-      })),
+        const { data, error } = await supabase
+          .from('rubrics')
+          .select('*')
+          .eq('user_id', user.id);
 
-      saveRubric: () => {
-        const { currentRubric, rubrics } = get();
+        if (error) throw error;
+
+        const rubrics: Rubric[] = (data || []).map((row: any) => ({
+          ...row.data,
+          id: row.id,
+          user_id: row.user_id,
+          name: row.title,
+          type: row.type,
+        }));
+
+        // Handle legacy/malformed data if necessary, but assuming data column has the rubric structure
+        set({ rubrics });
+      } catch (error) {
+        console.error('Error fetching rubrics:', error);
+      } finally {
+        set({ isLoading: false });
+      }
+    },
+
+    setCurrentRubric: (rubric) => set({ currentRubric: rubric }),
+
+    updateCurrentRubric: (updates) => set((state) => ({
+      currentRubric: state.currentRubric
+        ? { ...state.currentRubric, ...updates }
+        : updates
+    })),
+
+    saveRubric: async (rubricToCheck?: Rubric) => {
+      const { currentRubric, rubrics } = get();
+      let rubricToSave: Rubric;
+
+      if (rubricToCheck) {
+        rubricToSave = rubricToCheck;
+      } else {
         if (!currentRubric || !currentRubric.name) return;
 
         const now = new Date();
-        const columns = currentRubric.columns || [];
-        const rows = currentRubric.rows || [];
+        const columns = (currentRubric.columns || []);
+        const rows = (currentRubric.rows || []);
         const scoringMode = currentRubric.scoringMode || 'discrete';
+        const type = currentRubric.type || 'assignment';
 
-        // Calculate total possible points based on scoring mode
-        // Include calculation points for each row
         let totalPossiblePoints: number;
-        const type = currentRubric.type || 'assignment'; // Default to assignment if missing
-
         if (type === 'exam') {
-          // Exam: sum of row maxPoints + calc points
           totalPossiblePoints = rows.reduce((sum, row) => sum + (row.maxPoints || 0) + (row.calculationPoints || 0), 0);
         } else {
           const calculationPointsTotal = rows.reduce((sum, row) => sum + (row.calculationPoints || 0), 0);
           if (scoringMode === 'cumulative') {
-            // Cumulative: sum of all column points per row
             totalPossiblePoints = columns.reduce((sum, col) => sum + col.points, 0) * rows.length + calculationPointsTotal;
           } else {
-            // Discrete: max column points per row
             totalPossiblePoints = Math.max(...columns.map(c => c.points), 0) * rows.length + calculationPointsTotal;
           }
         }
 
         const existingRubric = rubrics.find(r => r.id === currentRubric.id);
 
-        const rubricToSave: Rubric = {
+        rubricToSave = {
           id: currentRubric.id || generateId(),
           name: currentRubric.name,
           type,
@@ -113,221 +147,262 @@ export const useRubricStore = create<RubricStore>()(
           createdAt: currentRubric.createdAt || now,
           updatedAt: now,
         };
+      }
 
-        const existingIndex = rubrics.findIndex(r => r.id === rubricToSave.id);
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("User not authenticated");
 
-        if (existingIndex >= 0) {
-          set({
-            rubrics: rubrics.map((r, i) => i === existingIndex ? rubricToSave : r),
-            currentRubric: null,
-          });
-        } else {
-          set({
-            rubrics: [...rubrics, rubricToSave],
-            currentRubric: null,
-          });
-        }
-      },
+        // Attach user_id
+        rubricToSave.user_id = user.id;
 
-      deleteRubric: (id) => set((state) => ({
-        rubrics: state.rubrics.filter(r => r.id !== id),
-        horizontalSessions: state.horizontalSessions.filter(s => s.rubricId !== id)
-      })),
-
-      getRubricById: (id) => get().rubrics.find(r => r.id === id),
-
-      importRubric: (rubricData) => {
-        const { rubrics } = get();
-        const now = new Date();
-        const columns = rubricData.columns || [];
-        const rows = rubricData.rows || [];
-        const scoringMode = rubricData.scoringMode || 'discrete';
-
-        const calculationPointsTotal = rows.reduce((sum, row) => sum + (row.calculationPoints || 0), 0);
-
-        let totalPossiblePoints: number;
-        if (scoringMode === 'cumulative') {
-          totalPossiblePoints = columns.reduce((sum, col) => sum + col.points, 0) * rows.length + calculationPointsTotal;
-        } else {
-          totalPossiblePoints = Math.max(...columns.map(c => c.points), 0) * rows.length + calculationPointsTotal;
-        }
-
-        const newRubric: Rubric = {
-          id: generateId(),
-          name: rubricData.name || 'Imported Rubric',
-          type: rubricData.type || 'assignment',
-          columns: columns,
-          rows: rows,
-          criteria: rubricData.criteria || [],
-          thresholds: rubricData.thresholds || [],
-          totalPossiblePoints,
-          scoringMode,
-          gradedStudents: [],
-          createdAt: now,
-          updatedAt: now,
+        const payload = {
+          id: rubricToSave.id,
+          user_id: user.id,
+          title: rubricToSave.name,
+          description: '', // description not in Rubric type currently
+          type: rubricToSave.type,
+          data: rubricToSave
         };
 
-        set({ rubrics: [...rubrics, newRubric] });
-      },
+        const { error } = await supabase
+          .from('rubrics')
+          .upsert(payload);
 
-      addColumn: (column) => set((state) => ({
-        currentRubric: {
-          ...state.currentRubric,
-          columns: [...(state.currentRubric?.columns || []), column]
-        }
-      })),
+        if (error) throw error;
 
-      updateColumn: (id, updates) => set((state) => ({
-        currentRubric: {
-          ...state.currentRubric,
-          columns: (state.currentRubric?.columns || []).map(col =>
-            col.id === id ? { ...col, ...updates } : col
-          )
-        }
-      })),
+        // Update local state
+        set((state) => {
+          const existingIndex = state.rubrics.findIndex(r => r.id === rubricToSave.id);
+          let newRubrics;
 
-      removeColumn: (id) => set((state) => ({
-        currentRubric: {
-          ...state.currentRubric,
-          columns: (state.currentRubric?.columns || []).filter(col => col.id !== id),
-          criteria: (state.currentRubric?.criteria || []).filter(c => c.columnId !== id)
-        }
-      })),
-
-      reorderColumns: (columns) => set((state) => ({
-        currentRubric: {
-          ...state.currentRubric,
-          columns
-        }
-      })),
-
-      setScoringMode: (mode) => set((state) => ({
-        currentRubric: {
-          ...state.currentRubric,
-          scoringMode: mode
-        }
-      })),
-
-      addRow: (row) => set((state) => ({
-        currentRubric: {
-          ...state.currentRubric,
-          rows: [...(state.currentRubric?.rows || []), row]
-        }
-      })),
-
-      addRows: (rows) => set((state) => ({
-        currentRubric: {
-          ...state.currentRubric,
-          rows: [...(state.currentRubric?.rows || []), ...rows]
-        }
-      })),
-
-      updateRow: (id, updates) => set((state) => ({
-        currentRubric: {
-          ...state.currentRubric,
-          rows: (state.currentRubric?.rows || []).map(row =>
-            row.id === id ? { ...row, ...updates } : row
-          )
-        }
-      })),
-
-      removeRow: (id) => set((state) => ({
-        currentRubric: {
-          ...state.currentRubric,
-          rows: (state.currentRubric?.rows || []).filter(row => row.id !== id),
-          criteria: (state.currentRubric?.criteria || []).filter(c => c.rowId !== id)
-        }
-      })),
-
-      setCriteria: (cell) => set((state) => {
-        const existingCriteria = state.currentRubric?.criteria || [];
-        const existingIndex = existingCriteria.findIndex(
-          c => c.rowId === cell.rowId && c.columnId === cell.columnId
-        );
-
-        let newCriteria;
-        if (existingIndex >= 0) {
-          newCriteria = existingCriteria.map((c, i) =>
-            i === existingIndex ? cell : c
-          );
-        } else {
-          newCriteria = [...existingCriteria, cell];
-        }
-
-        return {
-          currentRubric: {
-            ...state.currentRubric,
-            criteria: newCriteria
+          if (existingIndex >= 0) {
+            newRubrics = state.rubrics.map((r, i) => i === existingIndex ? rubricToSave : r);
+          } else {
+            newRubrics = [...state.rubrics, rubricToSave];
           }
-        };
-      }),
 
-      setThresholds: (thresholds) => set((state) => ({
+          return {
+            rubrics: newRubrics,
+            currentRubric: null,
+          };
+        });
+      } catch (error) {
+        console.error("Error saving rubric to Supabase:", error);
+        // We might want to throw or toast here, but for now log it.
+        // Consider keeping currentRubric if save fails?
+      }
+    },
+
+    deleteRubric: async (id) => {
+      try {
+        // Optimistic update? Or wait? 
+        // Logic: Delete from DB, then update store.
+        const { error } = await supabase
+          .from('rubrics')
+          .delete()
+          .eq('id', id);
+
+        if (error) throw error;
+
+        set((state) => ({
+          rubrics: state.rubrics.filter(r => r.id !== id),
+          horizontalSessions: state.horizontalSessions.filter(s => s.rubricId !== id)
+        }));
+      } catch (error) {
+        console.error("Error deleting rubric:", error);
+      }
+    },
+
+    getRubricById: (id) => get().rubrics.find(r => r.id === id),
+
+    importRubric: (rubricData) => {
+      const { rubrics } = get();
+      const now = new Date();
+      const columns = rubricData.columns || [];
+      const rows = rubricData.rows || [];
+      const scoringMode = rubricData.scoringMode || 'discrete';
+
+      const calculationPointsTotal = rows.reduce((sum, row) => sum + (row.calculationPoints || 0), 0);
+
+      let totalPossiblePoints: number;
+      if (scoringMode === 'cumulative') {
+        totalPossiblePoints = columns.reduce((sum, col) => sum + col.points, 0) * rows.length + calculationPointsTotal;
+      } else {
+        totalPossiblePoints = Math.max(...columns.map(c => c.points), 0) * rows.length + calculationPointsTotal;
+      }
+
+      const newRubric: Rubric = {
+        id: generateId(),
+        name: rubricData.name || 'Imported Rubric',
+        type: rubricData.type || 'assignment',
+        columns: columns,
+        rows: rows,
+        criteria: rubricData.criteria || [],
+        thresholds: rubricData.thresholds || [],
+        totalPossiblePoints,
+        scoringMode,
+        gradedStudents: [],
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      set({ rubrics: [...rubrics, newRubric] });
+    },
+
+    addColumn: (column) => set((state) => ({
+      currentRubric: {
+        ...state.currentRubric,
+        columns: [...(state.currentRubric?.columns || []), column]
+      }
+    })),
+
+    updateColumn: (id, updates) => set((state) => ({
+      currentRubric: {
+        ...state.currentRubric,
+        columns: (state.currentRubric?.columns || []).map(col =>
+          col.id === id ? { ...col, ...updates } : col
+        )
+      }
+    })),
+
+    removeColumn: (id) => set((state) => ({
+      currentRubric: {
+        ...state.currentRubric,
+        columns: (state.currentRubric?.columns || []).filter(col => col.id !== id),
+        criteria: (state.currentRubric?.criteria || []).filter(c => c.columnId !== id)
+      }
+    })),
+
+    reorderColumns: (columns) => set((state) => ({
+      currentRubric: {
+        ...state.currentRubric,
+        columns
+      }
+    })),
+
+    setScoringMode: (mode) => set((state) => ({
+      currentRubric: {
+        ...state.currentRubric,
+        scoringMode: mode
+      }
+    })),
+
+    addRow: (row) => set((state) => ({
+      currentRubric: {
+        ...state.currentRubric,
+        rows: [...(state.currentRubric?.rows || []), row]
+      }
+    })),
+
+    addRows: (rows) => set((state) => ({
+      currentRubric: {
+        ...state.currentRubric,
+        rows: [...(state.currentRubric?.rows || []), ...rows]
+      }
+    })),
+
+    updateRow: (id, updates) => set((state) => ({
+      currentRubric: {
+        ...state.currentRubric,
+        rows: (state.currentRubric?.rows || []).map(row =>
+          row.id === id ? { ...row, ...updates } : row
+        )
+      }
+    })),
+
+    removeRow: (id) => set((state) => ({
+      currentRubric: {
+        ...state.currentRubric,
+        rows: (state.currentRubric?.rows || []).filter(row => row.id !== id),
+        criteria: (state.currentRubric?.criteria || []).filter(c => c.rowId !== id)
+      }
+    })),
+
+    setCriteria: (cell) => set((state) => {
+      const existingCriteria = state.currentRubric?.criteria || [];
+      const existingIndex = existingCriteria.findIndex(
+        c => c.rowId === cell.rowId && c.columnId === cell.columnId
+      );
+
+      let newCriteria;
+      if (existingIndex >= 0) {
+        newCriteria = existingCriteria.map((c, i) =>
+          i === existingIndex ? cell : c
+        );
+      } else {
+        newCriteria = [...existingCriteria, cell];
+      }
+
+      return {
         currentRubric: {
           ...state.currentRubric,
-          thresholds
+          criteria: newCriteria
         }
-      })),
-
-      addGradedStudent: (rubricId, student) => set((state) => ({
-        rubrics: state.rubrics.map(r =>
-          r.id === rubricId
-            ? { ...r, gradedStudents: [...(r.gradedStudents || []), student] }
-            : r
-        )
-      })),
-
-      clearGradedStudents: (rubricId) => set((state) => ({
-        rubrics: state.rubrics.map(r =>
-          r.id === rubricId
-            ? { ...r, gradedStudents: [] }
-            : r
-        )
-      })),
-
-      saveHorizontalSession: (session) => set((state) => {
-        const existingIndex = state.horizontalSessions.findIndex(s => s.rubricId === session.rubricId);
-        if (existingIndex >= 0) {
-          return {
-            horizontalSessions: state.horizontalSessions.map((s, i) =>
-              i === existingIndex ? session : s
-            )
-          };
-        }
-        return {
-          horizontalSessions: [...state.horizontalSessions, session]
-        };
-      }),
-
-      getHorizontalSession: (rubricId) => get().horizontalSessions.find(s => s.rubricId === rubricId),
-
-      deleteHorizontalSession: (rubricId) => set((state) => ({
-        horizontalSessions: state.horizontalSessions.filter(s => s.rubricId !== rubricId)
-      })),
-
-      getUniqueClassNames: () => {
-        const { rubrics } = get();
-        const classNames = new Set<string>();
-        rubrics.forEach(r => {
-          r.gradedStudents?.forEach(s => {
-            if (s.className) classNames.add(s.className);
-          });
-        });
-        return Array.from(classNames).sort();
-      },
-
-      getStudentsByClassName: (className) => {
-        const { rubrics } = get();
-        return rubrics
-          .map(r => ({
-            rubric: r,
-            students: r.gradedStudents?.filter(s => s.className === className) || []
-          }))
-          .filter(item => item.students.length > 0);
-      },
+      };
     }),
-    {
-      name: 'rubric-storage',
-    }
-  )
-);
+
+    setThresholds: (thresholds) => set((state) => ({
+      currentRubric: {
+        ...state.currentRubric,
+        thresholds
+      }
+    })),
+
+    addGradedStudent: (rubricId, student) => set((state) => ({
+      rubrics: state.rubrics.map(r =>
+        r.id === rubricId
+          ? { ...r, gradedStudents: [...(r.gradedStudents || []), student] }
+          : r
+      )
+    })),
+
+    clearGradedStudents: (rubricId) => set((state) => ({
+      rubrics: state.rubrics.map(r =>
+        r.id === rubricId
+          ? { ...r, gradedStudents: [] }
+          : r
+      )
+    })),
+
+    saveHorizontalSession: (session) => set((state) => {
+      const existingIndex = state.horizontalSessions.findIndex(s => s.rubricId === session.rubricId);
+      if (existingIndex >= 0) {
+        return {
+          horizontalSessions: state.horizontalSessions.map((s, i) =>
+            i === existingIndex ? session : s
+          )
+        };
+      }
+      return {
+        horizontalSessions: [...state.horizontalSessions, session]
+      };
+    }),
+
+    getHorizontalSession: (rubricId) => get().horizontalSessions.find(s => s.rubricId === rubricId),
+
+    deleteHorizontalSession: (rubricId) => set((state) => ({
+      horizontalSessions: state.horizontalSessions.filter(s => s.rubricId !== rubricId)
+    })),
+
+    getUniqueClassNames: () => {
+      const { rubrics } = get();
+      const classNames = new Set<string>();
+      rubrics.forEach(r => {
+        r.gradedStudents?.forEach(s => {
+          if (s.className) classNames.add(s.className);
+        });
+      });
+      return Array.from(classNames).sort();
+    },
+
+    getStudentsByClassName: (className) => {
+      const { rubrics } = get();
+      return rubrics
+        .map(r => ({
+          rubric: r,
+          students: r.gradedStudents?.filter(s => s.className === className) || []
+        }))
+        .filter(item => item.students.length > 0);
+    },
+  }));

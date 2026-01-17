@@ -56,6 +56,7 @@ export type RubricType = 'assignment' | 'exam';
 
 export interface Rubric {
   id: string;
+  user_id?: string;
   name: string;
   type: RubricType;
   gradingMethod?: 'points' | 'mastery'; // For exams: 'points' is default

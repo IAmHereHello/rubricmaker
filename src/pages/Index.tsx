@@ -1,7 +1,7 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { RubricList } from '@/components/RubricList';
-import { ClipboardList, Upload, LogOut, UserPlus, AlertTriangle } from 'lucide-react';
+import { ClipboardList, Upload, LogOut, UserPlus, AlertTriangle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { importGradingSession } from '@/lib/excel-state';
 import { useToast } from '@/components/ui/use-toast';
@@ -15,9 +15,13 @@ const Index = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { getRubricById } = useRubricStore();
+  const { getRubricById, fetchRubrics, isLoading } = useRubricStore();
   const { t } = useLanguage();
   const { isGuest, signOut } = useAuth();
+
+  useEffect(() => {
+    fetchRubrics();
+  }, [fetchRubrics]);
 
   const handleImportClick = () => {
     fileInputRef.current?.click();
@@ -130,7 +134,13 @@ const Index = () => {
       )}
 
       <main className="container mx-auto px-4 py-8">
-        <RubricList />
+        {isLoading ? (
+          <div className="flex justify-center items-center h-64">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : (
+          <RubricList />
+        )}
       </main>
     </div >
   );
