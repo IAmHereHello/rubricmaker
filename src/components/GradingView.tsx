@@ -42,6 +42,7 @@ export function GradingView() {
 
   useEffect(() => {
     if (rubricId) {
+      console.log(`[GradingView] Effect triggered for rubric ${rubricId}. Key Present: ${!!privacyKey}`);
       // If we have a key, fetch results. If not, prompt.
       if (privacyKey) {
         fetchResults(rubricId);

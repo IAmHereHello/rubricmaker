@@ -98,6 +98,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
 
   useEffect(() => {
     if (rubric.id) {
+      console.log(`[HorizontalGradingView] Effect triggered for rubric ${rubric.id}. Key Present: ${!!privacyKey}`);
       if (privacyKey) {
         fetchResults(rubric.id);
       } else {

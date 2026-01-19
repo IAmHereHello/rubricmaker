@@ -35,37 +35,52 @@ export const useResultsStore = create<ResultsStore>((set, get) => ({
 
     fetchResults: async (rubricId: string) => {
         const { privacyKey } = get();
-        if (!privacyKey) return;
+        console.log(`[useResultsStore] fetchResults called for rubric: ${rubricId}. Key set: ${!!privacyKey}`);
+
+        if (!privacyKey) {
+            console.warn('[useResultsStore] No privacy key set. Aborting fetch.');
+            return;
+        }
 
         set({ isLoading: true });
         try {
+            console.log(`[useResultsStore] Querying Supabase for rubric_id: ${rubricId}...`);
             const { data, error } = await supabase
                 .from('student_results')
                 .select('*')
                 .eq('rubric_id', rubricId);
 
-            if (error) throw error;
+            if (error) {
+                console.error('[useResultsStore] Supabase error:', error);
+                throw error;
+            }
+
+            console.log(`[useResultsStore] Fetched ${data?.length || 0} rows from Supabase.`);
 
             const decryptedStudents: GradedStudent[] = [];
 
             data?.forEach((row) => {
                 try {
                     const decryptedName = decrypt(row.student_name, privacyKey);
-                    const decryptedDataString = decrypt(row.data, privacyKey); // The 'data' column is encrypted JSON string
+                    const decryptedDataString = decrypt(row.data, privacyKey);
 
                     if (decryptedName && decryptedDataString) {
                         const parsedData = JSON.parse(decryptedDataString);
                         // Ensure ID matches the row ID from DB to allow updates
                         decryptedStudents.push({
                             ...parsedData,
-                            id: row.id, // Use DB ID
+                            id: row.id, // Use DB ID to ensure future updates hit the same row
                             studentName: decryptedName,
                         });
+                    } else {
+                        console.warn(`[useResultsStore] Row ${row.id} decrypted to null/empty.`);
                     }
                 } catch (e) {
-                    console.warn('Failed to decrypt row', row.id, e);
+                    console.warn(`[useResultsStore] Failed to decrypt row ${row.id}:`, e);
                 }
             });
+
+            console.log(`[useResultsStore] Successfully decrypted ${decryptedStudents.length} students.`);
 
             set((state) => ({
                 results: {
@@ -75,7 +90,7 @@ export const useResultsStore = create<ResultsStore>((set, get) => ({
             }));
 
         } catch (error) {
-            console.error('Error fetching results:', error);
+            console.error('[useResultsStore] Error fetching results:', error);
         } finally {
             set({ isLoading: false });
         }
