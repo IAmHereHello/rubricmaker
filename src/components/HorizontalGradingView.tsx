@@ -19,6 +19,9 @@ import { CellFeedback, GradedStudent, Rubric, Threshold, StudentGradingData } fr
 import { exportGradingSession, GradingSessionState } from '@/lib/excel-state';
 import { useToast } from '@/components/ui/use-toast';
 import { Switch } from '@/components/ui/switch';
+import { useResultsStore } from '@/hooks/useResultsStore';
+import { PrivacyKeyDialog } from '@/components/PrivacyKeyDialog';
+import { Lock, Cloud } from 'lucide-react';
 
 interface HorizontalGradingViewProps {
   rubric: Rubric;
@@ -31,6 +34,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
   const { addGradedStudent, getRubricById } = useRubricStore();
   const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { saveResult, fetchResults, loadKeyFromStorage, privacyKey } = useResultsStore();
 
   const handleSaveAndExit = () => {
     // 1. Prepare State
@@ -86,6 +90,21 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
   const [generalFeedback, setGeneralFeedback] = useState('');
   // Show summary at end
   const [showSummary, setShowSummary] = useState(false);
+  const [showPrivacyDialog, setShowPrivacyDialog] = useState(false);
+
+  useEffect(() => {
+    loadKeyFromStorage();
+  }, []);
+
+  useEffect(() => {
+    if (rubric.id) {
+      if (privacyKey) {
+        fetchResults(rubric.id);
+      } else {
+        setShowPrivacyDialog(true);
+      }
+    }
+  }, [rubric.id, privacyKey]);
   // Current column selection for this student+row
   const [selectedColumn, setSelectedColumn] = useState<string | null>(null);
   // Manual score for exams
@@ -529,9 +548,12 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
         };
 
         addGradedStudent(rubric.id, gradedStudent);
+        // Save to Cloud (Encrypted)
+        saveResult(rubric.id, gradedStudent).catch(err => {
+          console.error("Failed to save to cloud", err);
+        });
       }
     });
-
     // Clear LocalStorage Session
     clearSession();
 
@@ -680,9 +702,24 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
               <ArrowLeft className="h-4 w-4" />
               Exit
             </Button>
-            <h1 className="text-lg font-semibold truncate max-w-[200px] md:max-w-none absolute left-1/2 -translate-x-1/2">
-              {rubric.name} - Horizontal Grading
-            </h1>
+            <div className="flex flex-col items-center">
+              <h1 className="text-lg font-semibold truncate max-w-[200px] md:max-w-none">
+                {rubric.name} - Horizontal Grading
+              </h1>
+              <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                {privacyKey ? (
+                  <>
+                    <Cloud className="h-3 w-3" />
+                    <Lock className="h-3 w-3" />
+                    <span className="text-green-600">Cloud Sync Active</span>
+                  </>
+                ) : (
+                  <span onClick={() => setShowPrivacyDialog(true)} className="cursor-pointer hover:underline text-amber-600">
+                    Click to Enable Cloud Sync
+                  </span>
+                )}
+              </div>
+            </div>
             <div className="flex items-center gap-2 bg-secondary/20 p-1.5 rounded-lg">
               <div className="flex items-center gap-2 px-2">
                 <div className="flex items-center gap-2">
@@ -969,6 +1006,12 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
           </CardContent>
         </Card>
       </div>
+
+
+      <PrivacyKeyDialog
+        isOpen={showPrivacyDialog}
+        onOpenChange={setShowPrivacyDialog}
+      />
     </div >
   );
 }

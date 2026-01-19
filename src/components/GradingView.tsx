@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,11 +15,16 @@ import { cn } from '@/lib/utils';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { CellFeedback, GradedStudent, Threshold } from '@/types/rubric';
+import { useResultsStore } from '@/hooks/useResultsStore';
+import { PrivacyKeyDialog } from '@/components/PrivacyKeyDialog';
+import { Lock, Cloud } from 'lucide-react';
+
 
 export function GradingView() {
   const { rubricId } = useParams();
   const navigate = useNavigate();
   const { getRubricById, addGradedStudent } = useRubricStore();
+  const { saveResult, fetchResults, loadKeyFromStorage, privacyKey } = useResultsStore();
 
   const rubric = getRubricById(rubricId || '');
 
@@ -29,6 +34,22 @@ export function GradingView() {
   const [cellFeedback, setCellFeedback] = useState<CellFeedback[]>([]);
   const [generalFeedback, setGeneralFeedback] = useState('');
   const [showSummary, setShowSummary] = useState(false);
+  const [showPrivacyDialog, setShowPrivacyDialog] = useState(false);
+
+  useEffect(() => {
+    loadKeyFromStorage();
+  }, []);
+
+  useEffect(() => {
+    if (rubricId) {
+      // If we have a key, fetch results. If not, prompt.
+      if (privacyKey) {
+        fetchResults(rubricId);
+      } else {
+        setShowPrivacyDialog(true);
+      }
+    }
+  }, [rubricId, privacyKey]);
 
   const isExam = rubric?.type === 'exam';
 
@@ -309,6 +330,11 @@ export function GradingView() {
 
     if (rubricId) {
       addGradedStudent(rubricId, student);
+      // Save to Cloud (Encrypted)
+      saveResult(rubricId, student).catch(err => {
+        console.error("Failed to save to cloud", err);
+        // Toast?
+      });
     }
 
     return student;
@@ -360,9 +386,24 @@ export function GradingView() {
               <ArrowLeft className="h-4 w-4" />
               Back
             </Button>
-            <h1 className="text-lg font-semibold truncate max-w-[200px] md:max-w-none">
-              {rubric.name}
-            </h1>
+            <div className="flex flex-col">
+              <h1 className="text-lg font-semibold truncate max-w-[200px] md:max-w-none">
+                {rubric.name}
+              </h1>
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                {privacyKey ? (
+                  <>
+                    <Cloud className="h-3 w-3" />
+                    <Lock className="h-3 w-3" />
+                    <span className="text-green-600">Encrypted Cloud Sync Active</span>
+                  </>
+                ) : (
+                  <span onClick={() => setShowPrivacyDialog(true)} className="cursor-pointer hover:underline text-amber-600">
+                    Click to Enable Cloud Sync
+                  </span>
+                )}
+              </div>
+            </div>
             <div className="flex gap-2">
               <Button
                 onClick={handleSaveAndNext}
@@ -401,6 +442,9 @@ export function GradingView() {
                   value={studentName}
                   onChange={(e) => setStudentName(e.target.value)}
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Tip: Use initials. Data is encrypted with your password.
+                </p>
               </CardContent>
             </Card>
 
@@ -716,6 +760,10 @@ export function GradingView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <PrivacyKeyDialog
+        isOpen={showPrivacyDialog}
+        onOpenChange={setShowPrivacyDialog}
+      />
     </div>
   );
 }
