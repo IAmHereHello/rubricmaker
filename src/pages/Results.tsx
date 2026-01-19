@@ -1,24 +1,46 @@
-import { useState, useMemo } from 'react';
+import { GradedStudentsTable } from '@/components/GradedStudentsTable';
+import { ArrowLeft, Users, FileSpreadsheet } from 'lucide-react';
+import { useResultsStore } from '@/hooks/useResultsStore';
+import { PrivacyKeyDialog } from '@/components/PrivacyKeyDialog';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRubricStore } from '@/hooks/useRubricStore';
 import { Button } from '@/components/ui/button';
-
-import { GradedStudentsTable } from '@/components/GradedStudentsTable';
-import { ArrowLeft, Users, FileSpreadsheet } from 'lucide-react';
-
 import { Rubric, GradedStudent } from '@/types/rubric';
+
 
 export default function Results() {
     const navigate = useNavigate();
     const { rubrics } = useRubricStore();
+    const { fetchResults, results, loadKeyFromStorage, privacyKey } = useResultsStore();
+    const [showPrivacyDialog, setShowPrivacyDialog] = useState(false);
+
+    useEffect(() => {
+        loadKeyFromStorage();
+    }, []);
+
+    useEffect(() => {
+        if (privacyKey) {
+            rubrics.forEach(rubric => {
+                fetchResults(rubric.id);
+            });
+        } else if (rubrics.length > 0) {
+            // We could auto-show it, or let the user click a button?
+            // User requested "If NO Key: Show a Dialog/Modal forcing the user"
+            setShowPrivacyDialog(true);
+        }
+    }, [privacyKey, rubrics.length]); // Depend on length to trigger when rubrics load
 
     // Group students by Class -> Rubric
     const groupedResults = useMemo(() => {
         const groups: Record<string, Record<string, { rubric: Rubric; students: GradedStudent[] }>> = {};
 
         rubrics.forEach(rubric => {
-            if (rubric.gradedStudents && rubric.gradedStudents.length > 0) {
-                rubric.gradedStudents.forEach(student => {
+            // Use results from our new E2EE store instead of local rubric.gradedStudents
+            const students = results[rubric.id] || [];
+
+            if (students.length > 0) {
+                students.forEach(student => {
                     const className = student.className || 'Unassigned Class';
 
                     if (!groups[className]) {
@@ -38,7 +60,7 @@ export default function Results() {
         });
 
         return groups;
-    }, [rubrics]);
+    }, [rubrics, results]);
 
 
 
@@ -54,7 +76,13 @@ export default function Results() {
                             Back to Dashboard
                         </Button>
                         <h1 className="text-lg font-semibold">Results Dashboard</h1>
-                        <div className="w-20" />
+                        <div className="w-20 flex justify-end">
+                            {!privacyKey && (
+                                <Button size="sm" variant="outline" onClick={() => setShowPrivacyDialog(true)}>
+                                    Unlock
+                                </Button>
+                            )}
+                        </div>
                     </div>
                 </div>
             </header>
@@ -70,6 +98,13 @@ export default function Results() {
                             Start grading students to see results appear here. Results are grouped by class and rubric.
                         </p>
                         <Button onClick={() => navigate('/')}>Go to Dashboard</Button>
+                        <div className="mt-4">
+                            {!privacyKey && (
+                                <Button variant="outline" onClick={() => setShowPrivacyDialog(true)}>
+                                    Enter Privacy Password to Load Data
+                                </Button>
+                            )}
+                        </div>
                     </div>
                 ) : (
                     <div className="space-y-8">
@@ -96,6 +131,10 @@ export default function Results() {
                     </div>
                 )}
             </div>
+            <PrivacyKeyDialog
+                isOpen={showPrivacyDialog}
+                onOpenChange={setShowPrivacyDialog}
+            />
         </div>
     );
 }
