@@ -313,6 +313,7 @@ export const useRubricStore = create<RubricStore>()(
       const newRubric: Rubric = {
         id: generateId(),
         name: rubricData.name || 'Imported Rubric',
+        description: rubricData.description || '',
         type: rubricData.type || 'assignment',
         columns: columns,
         rows: rows,

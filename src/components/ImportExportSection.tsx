@@ -8,13 +8,22 @@ import { Label } from '@/components/ui/label';
 import { Copy, Download, Upload, Check, Share2 } from 'lucide-react';
 import { useRubricStore } from '@/hooks/useRubricStore';
 import { toast } from 'sonner';
+import { exportRubric, parseImportString } from '@/lib/rubric-io';
+import { ImportPreviewDialog } from './ImportPreviewDialog';
+import { useNavigate } from 'react-router-dom';
+import { Rubric } from '@/types/rubric';
 
 export function ImportExportSection() {
-  const { rubrics, importRubric } = useRubricStore();
+  const { rubrics, importRubric, setCurrentRubric } = useRubricStore();
+  const navigate = useNavigate();
   const [selectedRubricId, setSelectedRubricId] = useState<string>('');
   const [importString, setImportString] = useState('');
   const [copied, setCopied] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+
+  // New state for preview dialog
+  const [previewData, setPreviewData] = useState<Partial<Rubric> | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const handleExport = async () => {
     if (!selectedRubricId) {
@@ -25,18 +34,10 @@ export function ImportExportSection() {
     const rubric = rubrics.find(r => r.id === selectedRubricId);
     if (!rubric) return;
 
-    // Create a clean export object (without dates for cleaner export)
-    const exportData = {
-      name: rubric.name,
-      columns: rubric.columns,
-      rows: rubric.rows,
-      criteria: rubric.criteria,
-      thresholds: rubric.thresholds,
-      scoringMode: rubric.scoringMode,
-    };
+    // Use the utility to create the export string
+    const base64String = exportRubric(rubric);
 
-    const jsonString = JSON.stringify(exportData);
-    const base64String = btoa(unescape(encodeURIComponent(jsonString)));
+
 
     try {
       await navigator.clipboard.writeText(base64String);
@@ -64,21 +65,43 @@ export function ImportExportSection() {
     }
 
     try {
-      const jsonString = decodeURIComponent(escape(atob(importString.trim())));
-      const rubricData = JSON.parse(jsonString);
+      // Parse the string using our new utility
+      const rubricData = parseImportString(importString);
 
-      // Validate the imported data has required fields
-      if (!rubricData.name || !rubricData.columns || !rubricData.rows) {
-        throw new Error('Invalid rubric format');
-      }
-
-      importRubric(rubricData);
-      toast.success(`Imported "${rubricData.name}" successfully!`);
-      setImportString('');
-      setImportDialogOpen(false);
+      // Set data for preview and open dialog
+      setPreviewData(rubricData);
+      setImportDialogOpen(false); // Close the import text area dialog
+      setPreviewOpen(true);       // Open the preview dialog
     } catch (err) {
       toast.error('Invalid rubric string. Please check and try again.');
     }
+  };
+
+  const handleSaveToLibrary = () => {
+    if (!previewData) return;
+
+    // We pass the data to store's importRubric which adds it to the list
+    importRubric(previewData);
+
+    toast.success(`Saved "${previewData.name}" to your library!`);
+    setPreviewOpen(false);
+    setImportString('');
+    setPreviewData(null);
+  };
+
+  const handleEditImmediately = () => {
+    if (!previewData) return;
+
+    // Set as current rubric without saving yet
+    setCurrentRubric(previewData);
+
+    setPreviewOpen(false);
+    setImportString('');
+    setPreviewData(null);
+
+    // Navigate to builder
+    navigate('/builder');
+    toast.info('Rubric loaded for editing');
   };
 
   return (
@@ -173,6 +196,14 @@ export function ImportExportSection() {
           </p>
         )}
       </CardContent>
+
+      <ImportPreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        rubricData={previewData}
+        onSave={handleSaveToLibrary}
+        onEditImmediately={handleEditImmediately}
+      />
     </Card>
   );
 }
