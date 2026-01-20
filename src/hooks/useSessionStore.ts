@@ -19,48 +19,34 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     currentSession: null,
 
     saveSession: async (rubricId: string, sessionState: GradingSessionState) => {
+        console.log(`[useSessionStore] saveSession triggered for rubric ${rubricId}`);
         try {
             const { data: { user } } = await supabase.auth.getUser();
+            console.log(`[useSessionStore] Auth Status:`, user ? `User ${user.id}` : 'Guest');
 
             // === GUEST USER (Local Storage) ===
             if (!user) {
-                const storageKey = `rubric-grading-session-${rubricId}`; // Using simple key for guest/generic
-                // Note: The specific key format in components uses className too: `rubric-grading-session-${rubricId}-${safeClassName}`
-                // Ideally we should pass the full key or let the component handle the key generation.
-                // However, the prompt asked to centralize it.
-                // For now, let's keep the component managing localStorage key for specific class variations if needed,
-                // OR adapt this store to accept a 'storageKey' or 'className'.
-                // Given the prompt "IF Guest: Save to localStorage", I will stick to a standard key pattern or accept optional params?
-                // Use a generic key or rely on the component to call this with the right ID?
-                // The prompt says: "IF Guest: Save to localStorage."
-                // I'll use a consistent key pattern `guest_session_${rubricId}` to differentiate from old logic if I can,
-                // OR reuse the existing pattern if I can match it.
-                // Let's use `rubric-grading-session-${rubricId}` (without classname for now, or maybe include it in sessionState and use it?)
-                // sessionState has 'studentsData' but not 'className' explicitly in the root type in `excel-state.ts`.
-                // Wait, `HorizontalGradingSessionState` in `types/rubric.ts` HAS className. `GradingSessionState` in `excel-state` DOES NOT.
-                // I should verify `excel-state.ts` definition again.
-
-                // In `excel-state.ts`, GradingSessionState is the logic being saved.
-                // Check `HorizontalGradingView` line 214: `rubric-grading-session-${rubric.id}-${safeClassName}`.
-                // If I want to support multiple classes for guests, I need className.
-                // But for Cloud, we just use `rubricId` and maybe `user_id` as unique constraints?
-                // The Table schema provided: `rubric_id`, `user_id`. It implies ONE session per rubric per user?
-                // Or maybe multiple? The prompt says "most recent session for the current user".
-                // So likely one active session per rubric is enough for MVP.
-
+                console.log('[useSessionStore] Saving to LocalStorage (Guest Mode)');
                 const key = `rubric-grading-session-${rubricId}`;
                 localStorage.setItem(key, JSON.stringify(sessionState));
                 return;
             }
 
             // === LOGGED IN USER (Supabase + Encryption) ===
+            console.log('[useSessionStore] Mode: Auth User - Attempting Cloud Save');
             const privacyKey = getPrivacyKey();
             if (!privacyKey) {
                 console.warn('[useSessionStore] No privacy key, skipping cloud save');
                 return;
             }
 
-            const encryptedData = encrypt(JSON.stringify(sessionState), privacyKey);
+            let encryptedData;
+            try {
+                encryptedData = encrypt(JSON.stringify(sessionState), privacyKey);
+            } catch (encryptError) {
+                console.error('[useSessionStore] Encryption failed:', encryptError);
+                return;
+            }
 
             const payload = {
                 rubric_id: rubricId,
@@ -69,39 +55,42 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
                 updated_at: new Date().toISOString(),
             };
 
-            // We need to upsert based on rubric_id + user_id.
-            // Assuming the table has a unique constraint or we search first?
-            // "Enable RLS so users can only access their own sessions" - good.
-            // Primary key is UUID. We should probably use `upsert` with a conflict on (user_id, rubric_id) if that constraint exists,
-            // OR just upsert on `id` if we knew it.
-            // Since we don't know the ID, we might need to select first or rely on a UNIQUE composite index?
-            // The prompt requests: "Upsert to grading_sessions table based on rubric_id."
-            // This implies (user_id, rubric_id) should be unique.
-            // If the user didn't create a unique constraint, `upsert` might fail or duplicate.
-            // I'll try to find an existing one first to get the ID, then upsert.
+            // First check if a session exists to get its ID (if we need to be explicit)
+            // Or just try Upsert with match criteria if we have a constraint.
+            // Since we don't know if (user_id, rubric_id) is UNIQUE in the DB, 
+            // doing a select first is safer to effectively "Update or Insert".
 
-            const { data: existing } = await supabase
+            const { data: existing, error: fetchError } = await supabase
                 .from('grading_sessions')
                 .select('id')
                 .eq('rubric_id', rubricId)
-                .maybeSingle();
+                .maybeSingle(); // Use maybeSingle to avoid 406 on multiple items or empty
+
+            if (fetchError) {
+                console.error('[useSessionStore] Error checking existing session:', fetchError);
+            }
 
             const upsertPayload = {
                 ...payload,
-                id: existing?.id // If exists, update. If not, create (Supabase will gen 'id' if omitted)
+                id: existing?.id // Undefined means new row
             };
 
-            const { error } = await supabase
+            const { data: savedData, error } = await supabase
                 .from('grading_sessions')
-                .upsert(upsertPayload);
+                .upsert(upsertPayload)
+                .select();
 
             if (error) {
-                console.error('[useSessionStore] Cloud save failed:', error);
+                console.error('[useSessionStore] Cloud save FAILED:', error);
+                // Fallback to local?
+                // localStorage.setItem(`rubric-grading-session-${rubricId}`, JSON.stringify(sessionState));
                 throw error;
+            } else {
+                console.log('[useSessionStore] Cloud save SUCCESS. ID:', savedData?.[0]?.id || existing?.id);
             }
 
         } catch (error) {
-            console.error('[useSessionStore] Save session error:', error);
+            console.error('[useSessionStore] Save session crash:', error);
         }
     },
 

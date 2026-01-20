@@ -292,6 +292,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
 
     const intervalId = setInterval(() => {
       if (hasUnsavedChanges) {
+        console.log('[HorizontalGradingView] Autosave interval triggering save...');
         saveSessionToStorage();
         setHasUnsavedChanges(false);
       }
@@ -299,6 +300,17 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
 
     return () => clearInterval(intervalId);
   }, [autosaveEnabled, autosaveInterval, hasUnsavedChanges, saveSessionToStorage]);
+
+  // Trigger immediate save when a student is completed (reliable progress)
+  // This satisfies the "Save on HandleNext" requirement without async state issues,
+  // because completedStudentCount is updated at the end of the handler.
+  useEffect(() => {
+    if (completedStudentCount > 0 && autosaveEnabled) {
+      console.log('[HorizontalGradingView] Student completed, forcing immediate save.');
+      saveSessionToStorage();
+      setHasUnsavedChanges(false);
+    }
+  }, [completedStudentCount, autosaveEnabled, saveSessionToStorage]);
 
   // Save on unmount (optional, but good practice if we have pending changes)
   // useEffect(() => {
@@ -510,6 +522,28 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
     if (isFirstUnit) {
       setStudentOrder(prev => [...prev, currentStudentName]);
     }
+
+    // Force Immediate Save on Navigation
+    // We need to construct the session state here manually OR rely on the useEffect.
+    // relying on useEffect has a delay. Let's force a save via our helper if we can.
+    // But our 'saveSessionToStorage' helper uses 'stateRef.current'.
+    // We need to update the ref FIRST, because React state might not have flushed yet?
+    // Actually, 'updateStudentData' sets state, which triggers re-render, which updates ref in useEffect.
+    // So calling 'saveSessionToStorage()' directly here uses OLD Ref.
+
+    // BETTER FIX: trigger the effect by setting 'hasUnsavedChanges'.
+    // BUT user wants *reliable* save.
+    // Let's set a distinct flag or just call it in an effect that watches 'completedStudentCount' change?
+    // 'hasUnsavedChanges' is already set in an effect.
+    // Let's rely on the autosave interval OR make the interval very short?
+    // User requested "Auto-Save: inside handleNext... call saveSession".
+
+    // To do this correctly with mostly up-to-date data:
+    // We can't use 'saveSessionToStorage()' immediately because state is async.
+    // We can wrap the `saveSessionToStorage()` call in a `setTimeout(..., 0)` or use a `useEffect` that listens to `completedStudentCount`.
+
+    // I will add a `useEffect` that listens to `completedStudentCount` and saves immediately if `autosaveEnabled`.
+    // This effectively saves on every "Next" click.
 
     // Reset inputs
     setSelectedColumn(null);
