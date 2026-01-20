@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { HorizontalGradingView } from '@/components/HorizontalGradingView';
+import { ReviewSessionView } from '@/components/ReviewSessionView';
 import { useRubricStore } from '@/hooks/useRubricStore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,6 +11,7 @@ const HorizontalGrade = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { getRubricById } = useRubricStore();
+  const [viewMode, setViewMode] = useState<'grading' | 'review'>('grading');
 
   const rubric = getRubricById(rubricId || '');
   const locationState = location.state as { studentNames?: string[]; className?: string; resume?: boolean } | null;
@@ -30,7 +33,7 @@ const HorizontalGrade = () => {
 
   const isResuming = locationState?.resume || false;
 
-  if (studentNames.length === 0 && !isResuming) {
+  if (studentNames.length === 0 && !isResuming && viewMode === 'grading') {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Card className="max-w-md">
@@ -43,7 +46,24 @@ const HorizontalGrade = () => {
     );
   }
 
-  return <HorizontalGradingView rubric={rubric} initialStudentNames={studentNames} className={className} />;
+  if (viewMode === 'review') {
+    return (
+      <ReviewSessionView
+        rubric={rubric}
+        className={className}
+        onExit={() => navigate('/results')}
+      />
+    );
+  }
+
+  return (
+    <HorizontalGradingView
+      rubric={rubric}
+      initialStudentNames={studentNames}
+      className={className}
+      onStartReview={() => setViewMode('review')}
+    />
+  );
 };
 
 export default HorizontalGrade;
