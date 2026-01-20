@@ -1,5 +1,5 @@
 import { GradedStudentsTable } from '@/components/GradedStudentsTable';
-import { ArrowLeft, Users, FileSpreadsheet } from 'lucide-react';
+import { ArrowLeft, Users, FileSpreadsheet, Eye } from 'lucide-react';
 import { useResultsStore } from '@/hooks/useResultsStore';
 import { PrivacyKeyDialog } from '@/components/PrivacyKeyDialog';
 import { useEffect, useState, useMemo } from 'react';
@@ -63,6 +63,23 @@ export default function Results() {
     }, [rubrics, results]);
 
 
+    const handleStartReview = (rubricId: string, className: string) => {
+        // Navigate to HorizontalGrade with viewMode='review'
+        // We use the rubricId for the route, and pass class info in state
+        navigate(`/rubric/${rubricId}/grade`, {
+            state: {
+                viewMode: 'review',
+                className: className,
+                // Pass existing student names? ReviewSession fetches from store anyway.
+                // But HorizontalGrade checks "studentNames.length === 0" to show "No students" error.
+                // We need to trick it or fix it.
+                // Let's pass the student names we have in the results just to satisfy the check if needed, 
+                // but actually passing `resume: true` might bypass it? 
+                // Checked HorizontalGrade: `if (studentNames.length === 0 && !isResuming && viewMode === 'grading')`
+                // So if viewMode === 'review', it bypasses that check!
+            }
+        });
+    };
 
     const hasResults = Object.keys(groupedResults).length > 0;
 
@@ -117,7 +134,27 @@ export default function Results() {
 
                                 <div className="grid gap-6">
                                     {Object.entries(rubricsMap).map(([rubricId, data]) => (
-                                        <div key={rubricId}>
+                                        <div key={rubricId} className="border rounded-lg p-4 bg-card">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <div>
+                                                    <h3 className="font-semibold text-lg">{data.rubric.name}</h3>
+                                                    <p className="text-sm text-muted-foreground">
+                                                        {data.students.length} students graded
+                                                    </p>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <Button
+                                                        variant="secondary"
+                                                        size="sm"
+                                                        onClick={() => handleStartReview(rubricId, className)}
+                                                        className="gap-2"
+                                                    >
+                                                        <Eye className="h-4 w-4" />
+                                                        Review & Edit
+                                                    </Button>
+                                                </div>
+                                            </div>
+
                                             <GradedStudentsTable
                                                 rubric={data.rubric}
                                                 students={data.students}

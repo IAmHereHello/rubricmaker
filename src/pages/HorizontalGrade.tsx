@@ -11,10 +11,11 @@ const HorizontalGrade = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { getRubricById } = useRubricStore();
-  const [viewMode, setViewMode] = useState<'grading' | 'review'>('grading');
+
+  const locationState = location.state as { studentNames?: string[]; className?: string; resume?: boolean; viewMode?: 'grading' | 'review' } | null;
+  const [viewMode, setViewMode] = useState<'grading' | 'review'>(locationState?.viewMode || 'grading');
 
   const rubric = getRubricById(rubricId || '');
-  const locationState = location.state as { studentNames?: string[]; className?: string; resume?: boolean } | null;
   const studentNames = locationState?.studentNames || [];
   const className = locationState?.className || 'Unnamed Class';
 

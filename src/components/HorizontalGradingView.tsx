@@ -25,6 +25,7 @@ import { Lock, Cloud, Save, RotateCw, Edit } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSessionStore } from '@/hooks/useSessionStore';
 import { generatePdf } from '@/lib/pdf-generator';
+import { GradingInput } from '@/components/GradingInput';
 
 interface HorizontalGradingViewProps {
   rubric: Rubric;
@@ -1056,130 +1057,31 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
               </div>
             )}
 
-            {/* Column Selection or Exam Input */}
-            <div className="space-y-2">
-              <Label>{isExam ? 'Enter Score' : 'Select Level'}</Label>
-
-              {isExam ? (
-                <div className="space-y-4">
-                  {currentRow?.description && (
-                    <p className="text-sm text-muted-foreground bg-secondary/10 p-3 rounded-md">
-                      {currentRow.description}
-                    </p>
-                  )}
-                  <div className="flex items-center gap-4">
-                    <div className="flex-1">
-                      <div className="relative">
-                        <Input
-                          type="number"
-                          min="0"
-                          max={currentRow?.maxPoints || 100}
-                          step="0.5"
-                          value={currentManualScore !== undefined ? currentManualScore : ''}
-                          onChange={(e) => {
-                            const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
-                            setCurrentManualScore(val);
-                            pauseTimer();
-                          }}
-                          className="h-14 text-lg"
-                          placeholder="Points..."
-                          autoFocus={!isFirstRow} // Focus input if not first row (where name input is focused)
-                        />
-                        <span className="absolute right-4 top-4 text-muted-foreground font-medium">
-                          / {currentRow?.maxPoints || 0}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid gap-3">
-                  {rubric.columns.map((col) => {
-                    const criteria = getCriteriaValue(currentRow?.id || '', col.id);
-                    const isSelected = selectedColumn === col.id;
-
-                    return (
-                      <button
-                        key={col.id}
-                        onClick={() => {
-                          handleColumnSelect(col.id);
-                          pauseTimer();
-                        }}
-                        className={cn(
-                          "w-full p-4 rounded-lg border-2 text-left transition-all",
-                          "hover:border-primary/50 hover:bg-primary/5",
-                          isSelected
-                            ? "border-primary bg-primary/10 ring-2 ring-primary/20"
-                            : "border-muted bg-muted/30"
-                        )}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-medium">{col.name}</span>
-                          <span className="text-sm text-muted-foreground">{col.points} pts</span>
-                        </div>
-                        <p className={cn(
-                          "text-sm",
-                          isSelected ? "text-foreground" : "text-muted-foreground"
-                        )}>
-                          {criteria || <em className="opacity-50">No criteria</em>}
-                        </p>
-                        {isSelected && (
-                          <div className="flex items-center gap-2 mt-2 text-primary">
-                            <Check className="h-4 w-4" />
-                            <span className="text-sm font-medium">Selected</span>
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Calculation Points Checkbox */}
-            {(selectedColumn || (isExam && currentManualScore !== undefined)) && currentRow?.calculationPoints && currentRow.calculationPoints > 0 && (
-              <div className="p-4 bg-muted/30 rounded-lg border border-dashed border-muted-foreground/50">
-                <div className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    id="calculation-check"
-                    checked={calculationCorrect}
-                    onChange={(e) => {
-                      setCalculationCorrect(e.target.checked);
-                      pauseTimer();
-                    }}
-                    className="mt-1 h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary"
-                  />
-                  <div className="grid gap-1.5 leading-none">
-                    <Label htmlFor="calculation-check" className="text-base font-medium cursor-pointer">
-                      Award Calculation Points (+{currentRow.calculationPoints})
-                    </Label>
-                    <p className="text-sm text-muted-foreground">
-                      Uncheck if the student made a calculation error, even if the logic was correct.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Cell Feedback */}
-            {(selectedColumn || (isExam && currentManualScore !== undefined)) && (
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4" />
-                  Feedback for this cell (optional)
-                </Label>
-                <Textarea
-                  placeholder="Add specific feedback..."
-                  value={currentCellFeedback}
-                  onChange={(e) => {
-                    setCurrentCellFeedback(e.target.value);
-                    pauseTimer();
-                  }}
-                  className="min-h-[80px]"
-                />
-              </div>
-            )}
+            {/* Column Selection or Exam Inpu t*/}
+            <GradingInput
+              row={currentRow}
+              rubric={rubric}
+              selectedValue={isExam ? currentManualScore : selectedColumn}
+              onChange={(val, feedback, correct) => {
+                pauseTimer();
+                if (isExam) {
+                  setCurrentManualScore(val as number);
+                } else {
+                  handleColumnSelect(val as string);
+                }
+              }}
+              isExam={isExam}
+              cellFeedback={currentCellFeedback}
+              onFeedbackChange={(fb) => {
+                setCurrentCellFeedback(fb);
+                pauseTimer();
+              }}
+              calculationCorrect={calculationCorrect}
+              onCalculationChange={(correct) => {
+                setCalculationCorrect(correct);
+                pauseTimer();
+              }}
+            />
 
             {/* Next Student Button */}
             <Button
