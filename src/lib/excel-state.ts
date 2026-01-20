@@ -7,6 +7,7 @@ export interface GradingSessionState {
     studentOrder: string[];
     currentStudentIndex: number;
     studentsData: Record<string, StudentGradingData>; // Serialized Map
+    initialStudentNames?: string[]; // Persisted original list for resuming
     timestamp: number;
     completedStudentCount: number;
 }

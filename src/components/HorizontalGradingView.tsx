@@ -58,7 +58,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
     exportGradingSession({
       rubric,
       sessionState,
-      initialStudentNames,
+      initialStudentNames: activeStudentNames,
       className
     });
 
@@ -93,6 +93,16 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
   const [showPrivacyDialog, setShowPrivacyDialog] = useState(false);
 
   const [isGuest, setIsGuest] = useState(false);
+
+  // State for student names (prop OR hydrated from session)
+  const [activeStudentNames, setActiveStudentNames] = useState<string[]>(initialStudentNames);
+
+  useEffect(() => {
+    // If props change (rare), update state
+    if (initialStudentNames.length > 0) {
+      setActiveStudentNames(initialStudentNames);
+    }
+  }, [initialStudentNames]);
 
   useEffect(() => {
     loadKeyFromStorage();
@@ -205,11 +215,11 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
   const availableNames = useMemo(() => {
     if (!isFirstUnit) return [];
     const gradedInThisRow = Array.from(studentsData.keys());
-    return initialStudentNames.filter(name =>
+    return activeStudentNames.filter(name =>
       !gradedInThisRow.includes(name) &&
       name.toLowerCase().includes(nameInput.toLowerCase())
     );
-  }, [initialStudentNames, studentsData, nameInput, isFirstUnit]);
+  }, [activeStudentNames, studentsData, nameInput, isFirstUnit]);
 
   // -- Persistence (Save & Resume) --
   const safeClassName = className.replace(/[^a-zA-Z0-9]/g, '_');
@@ -233,6 +243,12 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
             });
             setStudentsData(dataMap);
             setCompletedStudentCount(session.completedStudentCount || 0);
+
+            // Restore initial names if present
+            if (session.initialStudentNames && session.initialStudentNames.length > 0) {
+              setActiveStudentNames(session.initialStudentNames);
+            }
+
             console.log('[HorizontalGradingView] Restored session from Cloud/Local');
 
             toast({
@@ -284,6 +300,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
       studentOrder: studentOrder.length > 0 ? studentOrder : [],
       currentStudentIndex,
       studentsData: dataObj,
+      initialStudentNames: activeStudentNames, // Persist source list
       timestamp: Date.now(),
       completedStudentCount,
     };
@@ -562,7 +579,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
     if (isFirstUnit) {
       setNameInput('');
       const gradedCount = studentOrder.length + 1;
-      if (gradedCount >= initialStudentNames.length) {
+      if (gradedCount >= activeStudentNames.length) {
         moveToNextUnit();
       }
       setTimeout(() => inputRef.current?.focus(), 100);
@@ -691,7 +708,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
   const requiredConditionsCount = isMastery && currentUnit.rule ? (currentUnit.rule.minConditions !== undefined ? currentUnit.rule.minConditions : currentUnit.rule.extraConditions.length) : 0;
 
   // -- Progress Stats --
-  const totalStudents = isFirstRow ? initialStudentNames.length : studentOrder.length;
+  const totalStudents = isFirstRow ? activeStudentNames.length : studentOrder.length;
   // Approximation of cells for stats
   const totalCells = gradingUnits.reduce((acc, unit) => acc + (unit.rows.length * totalStudents), 0);
   const completedCells = useMemo(() => {
@@ -745,7 +762,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
     const m = Math.floor(totalSecondsLeft / 60);
     const s = Math.round(totalSecondsLeft % 60);
     return `${m}m ${s}s`;
-  }, [avgTimePerStudent, isFirstRow, initialStudentNames.length, studentOrder.length, studentsGradedThisRow, rubric.rows.length, currentRowIndex]);
+  }, [avgTimePerStudent, isFirstRow, activeStudentNames.length, studentOrder.length, studentsGradedThisRow, rubric.rows.length, currentRowIndex]);
 
 
   const getCriteriaValue = (rowId: string, columnId: string) => {

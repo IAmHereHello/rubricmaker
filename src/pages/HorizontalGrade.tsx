@@ -11,7 +11,7 @@ const HorizontalGrade = () => {
   const { getRubricById } = useRubricStore();
 
   const rubric = getRubricById(rubricId || '');
-  const locationState = location.state as { studentNames?: string[]; className?: string } | null;
+  const locationState = location.state as { studentNames?: string[]; className?: string; resume?: boolean } | null;
   const studentNames = locationState?.studentNames || [];
   const className = locationState?.className || 'Unnamed Class';
 
@@ -28,7 +28,9 @@ const HorizontalGrade = () => {
     );
   }
 
-  if (studentNames.length === 0) {
+  const isResuming = locationState?.resume || false;
+
+  if (studentNames.length === 0 && !isResuming) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Card className="max-w-md">
