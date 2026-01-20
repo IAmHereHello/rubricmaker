@@ -34,16 +34,35 @@ export const useResultsStore = create<ResultsStore>((set, get) => ({
     },
 
     fetchResults: async (rubricId: string) => {
-        const { privacyKey } = get();
-        console.log(`[useResultsStore] fetchResults called for rubric: ${rubricId}. Key set: ${!!privacyKey}`);
-
-        if (!privacyKey) {
-            console.warn('[useResultsStore] No privacy key set. Aborting fetch.');
-            return;
-        }
-
         set({ isLoading: true });
         try {
+            // 1. Check Auth Status
+            const { data: { user } } = await supabase.auth.getUser();
+
+            // === GUEST USER (Local Storage) ===
+            if (!user) {
+                console.log(`[useResultsStore] Guest user detected. Fetching from LocalStorage for rubric: ${rubricId}`);
+                const localData = localStorage.getItem(`guest_results_${rubricId}`);
+                const parsedData = localData ? JSON.parse(localData) : [];
+
+                set((state) => ({
+                    results: {
+                        ...state.results,
+                        [rubricId]: parsedData
+                    }
+                }));
+                return; // Done for guest
+            }
+
+            // === LOGGED IN USER (Supabase + Encryption) ===
+            const { privacyKey } = get();
+            console.log(`[useResultsStore] User logged in. Fetching from Supabase for rubric: ${rubricId}. Key set: ${!!privacyKey}`);
+
+            if (!privacyKey) {
+                console.warn('[useResultsStore] No privacy key set. Aborting fetch.');
+                return;
+            }
+
             console.log(`[useResultsStore] Querying Supabase for rubric_id: ${rubricId}...`);
             const { data, error } = await supabase
                 .from('student_results')
@@ -97,54 +116,62 @@ export const useResultsStore = create<ResultsStore>((set, get) => ({
     },
 
     saveResult: async (rubricId: string, student: GradedStudent) => {
-        const { privacyKey, results, fetchResults } = get();
-        if (!privacyKey) throw new Error("Privacy Key not set");
+        const { privacyKey, results } = get();
 
-        // 1. Find existing student match to prevent duplicates
-        // We look in our LOCALLY decrypted state.
+        // 1. Check Auth Status
+        const { data: { user } } = await supabase.auth.getUser();
+
+        // dedupe logic common for both
         const currentList = results[rubricId] || [];
         const existingMatch = currentList.find(
             (s) => s.studentName.toLowerCase().trim() === student.studentName.toLowerCase().trim()
         );
 
-        // Use existing ID if found, otherwise use the one passed in (which might be new/random)
-        // Actually, if we are "saving" from a view, the view usually generates a random ID.
-        // We should OVERWRITE that ID with the DB ID if it exists, so we update instead of insert.
-        const finalId = existingMatch ? existingMatch.id : student.id; // Note: if student.id is UUID-like it might be fine, but DB might expect UUID.
+        // === GUEST USER (Local Storage) ===
+        if (!user) {
+            console.log(`[useResultsStore] Saving for Guest (LocalStorage)...`);
 
-        // If it's a completely new random ID (from frontend `Math.random`), checking if it's a valid UUID for Supabase might be needed 
-        // if Supabase auto-generates UUIDs.
-        // However, existing RubricStore uses generated IDs. 
-        // Let's assume `id` column in `student_results` is UUID. 
-        // If `finalId` is NOT a UUID (e.g. short ID from legacy), Supabase Upsert might fail if type is UUID.
-        // If the table allows text ID, we are fine.
-        // Assuming table `student_results` `id` is UUID (standard Supabase). 
-        // Our frontend `generateId` produces short strings.
-        // Strategy: If existingMatch, use its ID (which is from DB).
-        // If NO existingMatch, we let Supabase generate an ID? Or we generate a UUID?
-        // Supabase `upsert` needs an ID to update. If we omit ID, it inserts.
-        // If we pass a short-string ID to a UUID column, it errors.
-        // Let's check `student.id`. If matches existing, it's likely a UUID from previous fetch.
-        // If it's new, it's a short string.
-        // BETTER: Use `student_results` unique constraint? 
-        // Problem: we can't use constraint on name because it's encrypted differently each time.
-        // So we MUST determine the ID client-side if we want to update.
+            // Use existing ID if found, else keep student.id
+            const finalStudent = {
+                ...student,
+                id: existingMatch ? existingMatch.id : student.id
+            };
 
-        const idToUse = existingMatch ? existingMatch.id : undefined; // Undefined = let Supabase generate (Insert)
+            let newList = [...currentList];
+            if (existingMatch) {
+                newList = newList.map(s => s.id === existingMatch.id ? finalStudent : s);
+            } else {
+                newList.push(finalStudent);
+            }
+
+            // Save to LocalStorage
+            localStorage.setItem(`guest_results_${rubricId}`, JSON.stringify(newList));
+
+            // Update State
+            set((state) => ({
+                results: {
+                    ...state.results,
+                    [rubricId]: newList
+                }
+            }));
+            return;
+        }
+
+        // === LOGGED IN USER (Supabase + Encryption) ===
+        if (!privacyKey) throw new Error("Privacy Key not set");
+
+        // Use existing ID if found, otherwise undefined (insert)
+        const idToUse = existingMatch ? existingMatch.id : undefined;
 
         // 2. Encrypt
         const encryptedName = encrypt(student.studentName, privacyKey);
-        // We encrypt the WHOLE student object (excluding name/id maybe? or just everything) as 'data'
-        // To be safe, let's keep name separate in `student_name` (encrypted) and rest in `data` (encrypted).
         const encryptedData = encrypt(JSON.stringify(student), privacyKey);
 
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-
             const payload = {
                 id: idToUse, // If undefined, new row created
                 rubric_id: rubricId,
-                user_id: user?.id,
+                user_id: user.id,
                 student_name: encryptedName,
                 data: encryptedData,
                 updated_at: new Date().toISOString(),
@@ -158,18 +185,13 @@ export const useResultsStore = create<ResultsStore>((set, get) => ({
 
             if (error) throw error;
 
-            // 3. Update Local State immediately (Optimistic-ish or just reload)
-            // merging the new saved data into the list
-            // existingMatch might act as reference, but allow's just re-fetch to be clean?
-            // Re-fetching is safer for ID sync.
-
-            // But we can manually update to avoid flickering
+            // 3. Update Local State
             const newSavedStudent = {
                 ...student,
                 id: data.id, // The real UUID from DB
             };
 
-            let newList = [...(results[rubricId] || [])];
+            let newList = [...currentList];
             if (existingMatch) {
                 newList = newList.map(s => s.id === existingMatch.id ? newSavedStudent : s);
             } else {

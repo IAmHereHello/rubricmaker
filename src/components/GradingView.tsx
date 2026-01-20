@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,19 +37,39 @@ export function GradingView() {
   const [showSummary, setShowSummary] = useState(false);
   const [showPrivacyDialog, setShowPrivacyDialog] = useState(false);
 
+  const [isGuest, setIsGuest] = useState(false);
+
   useEffect(() => {
     loadKeyFromStorage();
+    // Check initial auth state
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setIsGuest(!user);
+    });
   }, []);
 
   useEffect(() => {
     if (rubricId) {
-      console.log(`[GradingView] Effect triggered for rubric ${rubricId}. Key Present: ${!!privacyKey}`);
-      // If we have a key, fetch results. If not, prompt.
-      if (privacyKey) {
-        fetchResults(rubricId);
-      } else {
-        setShowPrivacyDialog(true);
-      }
+      // Check auth again or rely on state if settled? 
+      // Safer to check async inside to be sure, or depend on isGuest if we trust it updates fast enough.
+      // Let's do a direct check to avoid race conditions with strict mode etc.
+
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        const guest = !user;
+        setIsGuest(guest);
+
+        if (guest) {
+          console.log('[GradingView] Guest user. Fetching local results...');
+          fetchResults(rubricId);
+          setShowPrivacyDialog(false); // Ensure logic doesn't trap them
+        } else {
+          console.log(`[GradingView] User logged in for rubric ${rubricId}. Key Present: ${!!privacyKey}`);
+          if (privacyKey) {
+            fetchResults(rubricId);
+          } else {
+            setShowPrivacyDialog(true);
+          }
+        }
+      });
     }
   }, [rubricId, privacyKey]);
 

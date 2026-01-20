@@ -21,7 +21,8 @@ import { useToast } from '@/components/ui/use-toast';
 import { Switch } from '@/components/ui/switch';
 import { useResultsStore } from '@/hooks/useResultsStore';
 import { PrivacyKeyDialog } from '@/components/PrivacyKeyDialog';
-import { Lock, Cloud } from 'lucide-react';
+import { Lock, Cloud, Save } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 interface HorizontalGradingViewProps {
   rubric: Rubric;
@@ -40,9 +41,6 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
     // 1. Prepare State
     const dataObj: Record<string, StudentGradingData> = {};
     studentsData.forEach((val, key) => { dataObj[key] = val; });
-
-    // Need completedStudentCount in scope or state
-    // We have it in state: completedStudentCount
 
     const sessionState: GradingSessionState = {
       rubricId: rubric.id,
@@ -92,18 +90,36 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
   const [showSummary, setShowSummary] = useState(false);
   const [showPrivacyDialog, setShowPrivacyDialog] = useState(false);
 
+  const [isGuest, setIsGuest] = useState(false);
+
   useEffect(() => {
     loadKeyFromStorage();
+    // Check initial auth state
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setIsGuest(!user);
+    });
   }, []);
 
   useEffect(() => {
     if (rubric.id) {
-      console.log(`[HorizontalGradingView] Effect triggered for rubric ${rubric.id}. Key Present: ${!!privacyKey}`);
-      if (privacyKey) {
-        fetchResults(rubric.id);
-      } else {
-        setShowPrivacyDialog(true);
-      }
+      // Check auth or use effect state
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        const guest = !user;
+        setIsGuest(guest);
+
+        if (guest) {
+          console.log('[HorizontalGradingView] Guest user. Fetching from LocalStorage...');
+          fetchResults(rubric.id);
+          setShowPrivacyDialog(false);
+        } else {
+          console.log(`[HorizontalGradingView] Effect triggered for rubric ${rubric.id}. Key Present: ${!!privacyKey}`);
+          if (privacyKey) {
+            fetchResults(rubric.id);
+          } else {
+            setShowPrivacyDialog(true);
+          }
+        }
+      });
     }
   }, [rubric.id, privacyKey]);
   // Current column selection for this student+row
@@ -708,7 +724,12 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
                 {rubric.name} - Horizontal Grading
               </h1>
               <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-                {privacyKey ? (
+                {isGuest ? (
+                  <span className="flex items-center gap-1 text-orange-600">
+                    <Save className="h-3 w-3" />
+                    <span>Local Storage 💾</span>
+                  </span>
+                ) : privacyKey ? (
                   <>
                     <Cloud className="h-3 w-3" />
                     <Lock className="h-3 w-3" />
