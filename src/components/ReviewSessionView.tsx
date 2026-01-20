@@ -6,10 +6,10 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { ChevronLeft, ChevronRight, Download, Check, FileText, Pencil, Eye, MessageSquare } from 'lucide-react';
 import { useResultsStore } from '@/hooks/useResultsStore';
+import { useSessionStore } from '@/hooks/useSessionStore';
 import { Rubric, GradedStudent } from '@/types/rubric';
 import { generatePdf } from '@/lib/pdf-generator';
 import { useToast } from '@/components/ui/use-toast';
-import { useNavigate } from 'react-router-dom';
 import { GradingInput } from '@/components/GradingInput';
 import { calculateStudentScore } from '@/lib/rubric-calculations';
 import { cn } from '@/lib/utils';
@@ -22,6 +22,7 @@ interface ReviewSessionViewProps {
 
 export function ReviewSessionView({ rubric, className, onExit }: ReviewSessionViewProps) {
     const { results, saveResult, fetchResults } = useResultsStore();
+    const { clearSession } = useSessionStore();
     const { toast } = useToast();
     const [currentIndex, setCurrentIndex] = useState(0);
     const [autoDownloadPdf, setAutoDownloadPdf] = useState(false);
@@ -116,6 +117,7 @@ export function ReviewSessionView({ rubric, className, onExit }: ReviewSessionVi
 
     const handleFinish = async () => {
         await handleSaveCurrent();
+        await clearSession(rubric.id);
         onExit();
     };
 

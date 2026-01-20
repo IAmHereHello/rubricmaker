@@ -64,19 +64,10 @@ export default function Results() {
 
 
     const handleStartReview = (rubricId: string, className: string) => {
-        // Navigate to HorizontalGrade with viewMode='review'
-        // We use the rubricId for the route, and pass class info in state
-        navigate(`/rubric/${rubricId}/grade`, {
+        // Navigate to HorizontalGrade with query param mode=review
+        navigate(`/grade/${rubricId}/horizontal?mode=review`, {
             state: {
-                viewMode: 'review',
-                className: className,
-                // Pass existing student names? ReviewSession fetches from store anyway.
-                // But HorizontalGrade checks "studentNames.length === 0" to show "No students" error.
-                // We need to trick it or fix it.
-                // Let's pass the student names we have in the results just to satisfy the check if needed, 
-                // but actually passing `resume: true` might bypass it? 
-                // Checked HorizontalGrade: `if (studentNames.length === 0 && !isResuming && viewMode === 'grading')`
-                // So if viewMode === 'review', it bypasses that check!
+                className: className
             }
         });
     };

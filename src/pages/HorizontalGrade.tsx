@@ -12,8 +12,12 @@ const HorizontalGrade = () => {
   const navigate = useNavigate();
   const { getRubricById } = useRubricStore();
 
+  // Parse Query Params
+  const searchParams = new URLSearchParams(location.search);
+  const modeParam = searchParams.get('mode');
+
   const locationState = location.state as { studentNames?: string[]; className?: string; resume?: boolean; viewMode?: 'grading' | 'review' } | null;
-  const [viewMode, setViewMode] = useState<'grading' | 'review'>(locationState?.viewMode || 'grading');
+  const [viewMode, setViewMode] = useState<'grading' | 'review'>((modeParam === 'review' || locationState?.viewMode === 'review') ? 'review' : 'grading');
 
   const rubric = getRubricById(rubricId || '');
   const studentNames = locationState?.studentNames || [];

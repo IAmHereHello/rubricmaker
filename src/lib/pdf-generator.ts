@@ -201,6 +201,33 @@ export const generatePdf = (rubric: Rubric, students: GradedStudent[], filename?
                 }
             }
         });
+
+        // Add General Feedback if present
+        if (student.generalFeedback) {
+            const finalY = (doc as any).lastAutoTable.finalY || 60;
+
+            // Check for page break if needed
+            if (finalY > doc.internal.pageSize.height - 40) {
+                doc.addPage();
+                doc.setFontSize(14);
+                doc.setTextColor(0, 0, 0);
+                doc.text("Algemene Feedback", 14, 20);
+                doc.setFontSize(11);
+                doc.setFont("helvetica", "normal");
+
+                const splitFeedback = doc.splitTextToSize(student.generalFeedback, pageWidth - 28);
+                doc.text(splitFeedback, 14, 30);
+            } else {
+                doc.setFontSize(14);
+                doc.setTextColor(0, 0, 0);
+                doc.text("Algemene Feedback", 14, finalY + 15);
+                doc.setFontSize(11);
+                doc.setFont("helvetica", "normal");
+
+                const splitFeedback = doc.splitTextToSize(student.generalFeedback, pageWidth - 28);
+                doc.text(splitFeedback, 14, finalY + 25);
+            }
+        }
     });
 
     const finalFilename = filename || (students.length === 1

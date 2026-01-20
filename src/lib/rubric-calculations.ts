@@ -1,5 +1,5 @@
 // Scoring logic moved here to be shared between Grading Views and Reviews
-import { Rubric, GradedStudent, GradingMethod } from '@/types/rubric';
+import { Rubric, GradedStudent } from '@/types/rubric';
 
 export interface StudentStats {
     totalScore: number;
@@ -8,7 +8,7 @@ export interface StudentStats {
     statusLabel: string;
 }
 
-export function calculateStudentScore(rubric: Rubric, grades: StudentGradingData['selections'] | any): StudentStats {
+export function calculateStudentScore(rubric: Rubric, grades: GradedStudent | any): StudentStats {
     let totalScore = 0;
     const isExam = rubric.type === 'exam';
 
