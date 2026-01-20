@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { RubricList } from '@/components/RubricList';
 import { ClipboardList, Upload, LogOut, UserPlus, AlertTriangle, Loader2 } from 'lucide-react';
@@ -10,6 +10,8 @@ import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useSessionStore } from "@/hooks/useSessionStore";
+import { RotateCw, Play } from "lucide-react";
 
 const Index = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -19,9 +21,30 @@ const Index = () => {
   const { t } = useLanguage();
   const { isGuest, signOut } = useAuth();
 
+  const { checkActiveSession } = useSessionStore();
+  const [activeSession, setActiveSession] = useState<{ rubricId: string; updatedAt: string; rubricName?: string } | null>(null);
+
   useEffect(() => {
     fetchRubrics();
   }, [fetchRubrics]);
+
+  useEffect(() => {
+    const check = async () => {
+      const session = await checkActiveSession();
+      if (session) {
+        // Find rubric name
+        const rubric = getRubricById(session.rubricId);
+        setActiveSession({ ...session, rubricName: rubric?.name || 'Unknown Rubric' });
+      }
+    };
+    // Active session check relies on auth, which might take a moment, 
+    // but the store handles auth.getUser().
+    // We also need rubrics to be fetched to get the name, so we depend on rubrics slightly?
+    // Actually getRubricById might return undefined if not loaded yet.
+    // Let's chain it or wait for rubrics? 
+    // We can just set it, and if name is missing initially, it might update if we depend on [rubrics].
+    check();
+  }, [checkActiveSession, getRubricById, isLoading]); // Re-run if rubrics load finishes
 
   const handleImportClick = () => {
     fileInputRef.current?.click();
@@ -129,6 +152,35 @@ const Index = () => {
           <div className="container mx-auto px-4 py-2 flex items-center gap-2 text-sm text-yellow-800 dark:text-yellow-200">
             <AlertTriangle className="h-4 w-4" />
             <span>You are browsing as a Guest. Changes are saved to this device only and may be lost if you clear your browser data.</span>
+          </div>
+        </div>
+      )}
+
+      {activeSession && (
+        <div className="bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-900">
+          <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-200">
+                <RotateCw className="h-4 w-4 animate-spin-slow" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                  Active Grading Session Found
+                </p>
+                <p className="text-xs text-blue-700 dark:text-blue-300">
+                  You have an unfinished session for <strong>{activeSession.rubricName}</strong>.
+                  <span className="opacity-75 ml-1">Last saved: {new Date(activeSession.updatedAt).toLocaleString()}</span>
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => navigate(`/grade/${activeSession.rubricId}/horizontal`, { state: { resume: true } })}
+              className="gap-2 bg-blue-600 hover:bg-blue-700 text-white border-none"
+            >
+              <Play className="h-3 w-3" />
+              Resume Grading
+            </Button>
           </div>
         </div>
       )}

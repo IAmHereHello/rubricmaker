@@ -21,8 +21,9 @@ import { useToast } from '@/components/ui/use-toast';
 import { Switch } from '@/components/ui/switch';
 import { useResultsStore } from '@/hooks/useResultsStore';
 import { PrivacyKeyDialog } from '@/components/PrivacyKeyDialog';
-import { Lock, Cloud, Save } from 'lucide-react';
+import { Lock, Cloud, Save, RotateCw } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useSessionStore } from '@/hooks/useSessionStore';
 
 interface HorizontalGradingViewProps {
   rubric: Rubric;
@@ -36,6 +37,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
   const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { saveResult, fetchResults, loadKeyFromStorage, privacyKey } = useResultsStore();
+  const { saveSession, fetchSession, clearSession } = useSessionStore();
 
   const handleSaveAndExit = () => {
     // 1. Prepare State
@@ -215,29 +217,39 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
 
   // Load session on mount
   useEffect(() => {
-    const savedSession = localStorage.getItem(storageKey);
-    if (savedSession) {
-      try {
-        const parsed = JSON.parse(savedSession);
-        // Validate basic structure
-        if (parsed.rubricId === rubric.id) {
-          setCurrentRowIndex(parsed.currentRowIndex);
-          setStudentOrder(parsed.studentOrder);
-          setCurrentStudentIndex(parsed.currentStudentIndex);
-          // Convert object back to Map
-          const dataMap = new Map<string, StudentGradingData>();
-          Object.entries(parsed.studentsData).forEach(([key, val]) => {
-            dataMap.set(key, val as StudentGradingData);
-          });
-          setStudentsData(dataMap);
-          setCompletedStudentCount(parsed.completedStudentCount || 0);
-          console.log('Restored session from localStorage');
+    const loadSession = async () => {
+      const session = await fetchSession(rubric.id);
+      if (session) {
+        try {
+          // Validate basic structure
+          if (session.rubricId === rubric.id) {
+            setCurrentRowIndex(session.currentRowIndex);
+            setStudentOrder(session.studentOrder);
+            setCurrentStudentIndex(session.currentStudentIndex);
+            // Convert object back to Map
+            const dataMap = new Map<string, StudentGradingData>();
+            Object.entries(session.studentsData).forEach(([key, val]) => {
+              dataMap.set(key, val as StudentGradingData);
+            });
+            setStudentsData(dataMap);
+            setCompletedStudentCount(session.completedStudentCount || 0);
+            console.log('[HorizontalGradingView] Restored session from Cloud/Local');
+
+            toast({
+              title: "Session Resumed",
+              description: "We picked up right where you left off.",
+            });
+          }
+        } catch (e) {
+          console.error('Failed to parse saved session', e);
         }
-      } catch (e) {
-        console.error('Failed to parse saved session', e);
       }
-    }
-  }, [rubric.id, storageKey]);
+    };
+
+    // Slight delay to ensure auth check might have happened or privacy key loaded?
+    // Actually fetchSession does checks internally.
+    loadSession();
+  }, [rubric.id, fetchSession, toast]);
 
   // Save session on change (Autosave Logic)
 
@@ -260,7 +272,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
     const dataObj: Record<string, StudentGradingData> = {};
     studentsData.forEach((val, key) => { dataObj[key] = val; });
 
-    const sessionState = {
+    const sessionState: GradingSessionState = {
       rubricId,
       currentRowIndex,
       studentOrder,
@@ -269,9 +281,10 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
       timestamp: Date.now(),
       completedStudentCount,
     };
-    localStorage.setItem(storageKey, JSON.stringify(sessionState));
-    console.log('Session saved to localStorage');
-  }, [storageKey]);
+
+    saveSession(rubricId, sessionState);
+    console.log('[HorizontalGradingView] Session saved (Cloud/Local)');
+  }, [saveSession]);
 
   // Interval Effect
   useEffect(() => {
@@ -294,10 +307,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
   //   }
   // }, []); // This is tricky with stale closures in cleanup, skipping for now to rely on interval or manual save.
 
-  // Clear session helper
-  const clearSession = () => {
-    localStorage.removeItem(storageKey);
-  };
+
 
 
   // -- Helpers --
@@ -571,8 +581,8 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
         });
       }
     });
-    // Clear LocalStorage Session
-    clearSession();
+    // Clear Session
+    clearSession(rubric.id);
 
     // Notify User
     toast({
