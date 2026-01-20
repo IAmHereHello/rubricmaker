@@ -21,7 +21,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { Switch } from '@/components/ui/switch';
 import { useResultsStore } from '@/hooks/useResultsStore';
 import { PrivacyKeyDialog } from '@/components/PrivacyKeyDialog';
-import { Lock, Cloud, Save, RotateCw } from 'lucide-react';
+import { Lock, Cloud, Save, RotateCw, Edit } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSessionStore } from '@/hooks/useSessionStore';
 import { generatePdf } from '@/lib/pdf-generator';
@@ -100,6 +100,12 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
   const [autoDownloadPdf, setAutoDownloadPdf] = useState(false);
   const [showCheckpointDialog, setShowCheckpointDialog] = useState(false);
   const [showFinalDialog, setShowFinalDialog] = useState(false);
+
+  // State for UX Refinements
+  const [timerActive, setTimerActive] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(100); // 100% progress
+  const [timerPaused, setTimerPaused] = useState(false);
+  const [isReviewEditing, setIsReviewEditing] = useState(false); // Toggle for Pencil in Review Phase
 
   // State for student names (prop OR hydrated from session)
   const [activeStudentNames, setActiveStudentNames] = useState<string[]>(initialStudentNames);
@@ -339,6 +345,8 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
 
     return () => clearInterval(intervalId);
   }, [autosaveEnabled, autosaveInterval, hasUnsavedChanges, saveSessionToStorage]);
+
+
 
   // Trigger immediate save when a student is completed (reliable progress)
   // This satisfies the "Save on HandleNext" requirement without async state issues,
@@ -653,9 +661,25 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
         setCurrentStudentIndex(prev => prev + 1);
       }
     }
+
+    // Reset UX State
+    setIsReviewEditing(false);
+    setTimerPaused(false);
+    setTimeLeft(100);
+    // Restart timer if we want it auto-active? 
+    // Usually timer is for "Speed Grading". 
+    // Maybe we only auto-start if it was active? 
+    // Keeping it simple: If timerActive is on, it continues for next student.
+    // Ensure 10s reset.
   };
 
   const moveToNextUnit = () => {
+    // Review Phase: Single pass through students (All units view)
+    if (gradingPhase === 'review') {
+      setShowFinalDialog(true);
+      return;
+    }
+
     // Check if we are done with all units
     if (currentUnitIndex + 1 >= gradingUnits.length) {
       // Phase Check
@@ -667,9 +691,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
     } else {
       // Find the start row index of the next unit
       const nextUnit = gradingUnits[currentUnitIndex + 1];
-      const nextRowId = nextUnit.rows[0].id; // error fix: nextUnit.rows[0].id was correct before?
-      // Wait, checking definition of gradingUnits loop above.
-      // gradingUnits maps to { id, name, rows: [] }. So rows[0] is correct.
+      const nextRowId = nextUnit.rows[0].id;
       const nextRowIndex = rubric.rows.findIndex(r => r.id === nextRowId);
 
       setCurrentRowIndex(nextRowIndex);
@@ -688,15 +710,23 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
     setSelectedColumn(null);
     setCurrentManualScore(undefined);
     // Note: We keep studentData as is!
+
+    // Disable timer by default in review?
+    setTimerActive(false);
+
     toast({
       title: "Review Phase Started",
       description: "You are now reviewing students. Enable auto-download if needed."
     });
   };
 
-  const finishGrading = () => {
+  const finishGrading = async () => {
+    if (!confirm("Are you sure you want to finish grading? This will clear the current session.")) {
+      return;
+    }
+
     // Save to Store
-    studentOrder.forEach(studentName => {
+    const promises = studentOrder.map(async studentName => {
       const data = studentsData.get(studentName);
       if (data) {
         const { totalScore } = calculateStudentScore(studentName);
@@ -715,27 +745,64 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
           status: status?.status || 'development',
           statusLabel: status?.label || 'In Ontwikkeling',
           gradedAt: new Date(),
+          extraConditionsMet: data.extraConditionsMet // Include mastery
         };
 
         addGradedStudent(rubric.id, gradedStudent);
         // Save to Cloud (Encrypted)
-        saveResult(rubric.id, gradedStudent).catch(err => {
+        try {
+          await saveResult(rubric.id, gradedStudent);
+        } catch (err) {
           console.error("Failed to save to cloud", err);
-        });
+        }
       }
     });
-    // Clear Session
-    clearSession(rubric.id);
+
+    await Promise.all(promises);
+
+    // Clear Session (Delete row)
+    await clearSession(rubric.id);
 
     // Notify User
     toast({
       title: "Grading Complete",
-      description: "All students saved. Redirecting to results...",
+      description: "All students saved. Session closed.",
     });
 
     // Redirect to Results
     navigate('/results');
   };
+
+  // -- Timer Logic (Placed here to access handleNextStudent) --
+  const handleNextStudentRef = useRef(handleNextStudent);
+  useEffect(() => {
+    handleNextStudentRef.current = handleNextStudent;
+  }, [handleNextStudent]);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (timerActive && !timerPaused && timeLeft > 0) {
+      interval = setInterval(() => {
+        setTimeLeft(prev => {
+          const newValue = prev - 1;
+          if (newValue <= 0) {
+            clearInterval(interval);
+            handleNextStudentRef.current();
+            return 100;
+          }
+          return newValue;
+        });
+      }, 100);
+    }
+    return () => clearInterval(interval);
+  }, [timerActive, timerPaused]);
+
+  const pauseTimer = () => {
+    if (timerActive && !timerPaused) {
+      setTimerPaused(true);
+    }
+  };
+
 
   const handleSuggestionClick = (name: string) => {
     setNameInput(name);
@@ -961,7 +1028,12 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
             </div>
           </div>
         </div>
-        <Progress value={progressPercent} className="h-1 w-full rounded-none" />
+        {/* Timer Progress Bar - Only visible if active */}
+        {timerActive && (
+          <Progress value={timeLeft} className={cn("h-1 w-full rounded-none transition-all duration-100 ease-linear", timerPaused ? "bg-amber-200" : "bg-primary/20", "[&>div]:bg-primary")} />
+        )}
+        {/* Overall Progress */}
+        <Progress value={progressPercent} className="h-1 w-full rounded-none opacity-50" />
       </header>
 
       <div className="container mx-auto px-4 py-6">
@@ -1056,162 +1128,298 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
             )}
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Student Name Input (First Row Only) */}
-            {isFirstRow && (
-              <div className="space-y-2 relative">
-                <Label htmlFor="student-name">Student Name</Label>
-                <Input
-                  ref={inputRef}
-                  id="student-name"
-                  placeholder="Type or select student name..."
-                  value={nameInput}
-                  onChange={(e) => {
-                    setNameInput(e.target.value);
-                    setShowSuggestions(true);
-                  }}
-                  onFocus={() => setShowSuggestions(true)}
-                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                  autoFocus
-                />
-                {showSuggestions && availableNames.length > 0 && (
-                  <div className="absolute z-10 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-48 overflow-auto">
-                    {availableNames.slice(0, 10).map((name) => (
-                      <button
-                        key={name}
-                        className="w-full px-3 py-2 text-left hover:bg-accent text-sm"
-                        onMouseDown={() => handleSuggestionClick(name)}
-                      >
-                        {name}
-                      </button>
-                    ))}
+            {gradingPhase === 'review' ? (
+              // === REVIEW PHASE UI ===
+              <div className="space-y-6">
+                <div className="flex items-center justify-between border-b pb-4">
+                  <div>
+                    <h2 className="text-2xl font-bold">{currentStudentName}</h2>
+                    <p className="text-muted-foreground flex items-center gap-2">
+                      Total Score: <span className="text-foreground font-semibold">{calculateStudentScore(currentStudentName).totalScore}</span>
+                    </p>
+                  </div>
+                  <Button
+                    variant={isReviewEditing ? "secondary" : "outline"}
+                    size="sm"
+                    onClick={() => setIsReviewEditing(!isReviewEditing)}
+                    className="gap-2"
+                  >
+                    <Edit className="h-4 w-4" />
+                    {isReviewEditing ? 'Done Editing' : 'Edit Grades'}
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-base">General Feedback</Label>
+                  <Textarea
+                    placeholder="Overall feedback for this student..."
+                    value={currentStudentData.generalFeedback}
+                    onChange={(e) => {
+                      pauseTimer();
+                      updateStudentData(currentStudentName, { generalFeedback: e.target.value });
+                    }}
+                    className="min-h-[100px] text-base"
+                    autoFocus
+                  />
+                </div>
+
+                <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
+                  <h3 className="font-semibold text-sm uppercase text-muted-foreground tracking-wider">
+                    Graded Items
+                  </h3>
+                  {rubric.rows.map((row) => {
+                    if (isExam) {
+                      // Exam View (Simplified)
+                      const score = currentStudentData.rowScores?.[row.id] || 0;
+                      return (
+                        <div key={row.id} className="p-3 border rounded-lg">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="font-medium">{row.name}</span>
+                            <span className="font-bold">{score} / {row.maxPoints}</span>
+                          </div>
+                          {isReviewEditing && (
+                            <Input
+                              type="number"
+                              value={score}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                const newScores = { ...currentStudentData.rowScores, [row.id]: val };
+                                updateStudentData(currentStudentName, { rowScores: newScores });
+                              }}
+                            />
+                          )}
+                        </div>
+                      );
+                    }
+
+                    // Standard View
+                    const selId = currentStudentData.selections[row.id];
+                    const selCol = rubric.columns.find(c => c.id === selId);
+
+                    return (
+                      <div key={row.id} className={cn("p-4 rounded-lg border transition-all", isReviewEditing ? "bg-muted/10" : "bg-card")}>
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="font-medium">{row.name}</div>
+                          {!isReviewEditing && (
+                            <Badge variant={selCol ? "default" : "outline"}>
+                              {selCol ? `${selCol.points} pts` : 'Skipped'}
+                            </Badge>
+                          )}
+                        </div>
+
+                        {!isReviewEditing ? (
+                          <div className="text-sm text-muted-foreground">
+                            {selCol ? (
+                              <>
+                                <span className="font-semibold text-foreground">{selCol.name}</span>
+                                {getCriteriaValue(row.id, selCol.id) && <span className="mx-2">-</span>}
+                                {getCriteriaValue(row.id, selCol.id)}
+                              </>
+                            ) : (
+                              <span className="italic">No selection made</span>
+                            )}
+                          </div>
+                        ) : (
+                          // Editing Mode: Show Buttons
+                          <div className="grid gap-2 mt-2">
+                            {rubric.columns.map((col) => {
+                              const isSel = selId === col.id;
+                              return (
+                                <button
+                                  key={col.id}
+                                  onClick={() => {
+                                    const newSelections = { ...currentStudentData.selections, [row.id]: col.id };
+                                    updateStudentData(currentStudentName, { selections: newSelections });
+                                  }}
+                                  className={cn(
+                                    "w-full p-2 rounded text-left text-sm border transition-all flex justify-between items-center",
+                                    isSel ? "border-primary bg-primary/10" : "border-muted hover:bg-muted"
+                                  )}
+                                >
+                                  <span>{col.name}</span>
+                                  <span className="text-xs text-muted-foreground">{col.points} pts</span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              // === INITIAL PHASE (STANDARD UI) ===
+              <>
+                {/* Student Name Input (First Row Only) */}
+                {isFirstRow && (
+                  <div className="space-y-2 relative">
+                    <Label htmlFor="student-name">Student Name</Label>
+                    <Input
+                      ref={inputRef}
+                      id="student-name"
+                      placeholder="Type or select student name..."
+                      value={nameInput}
+                      onChange={(e) => {
+                        setNameInput(e.target.value);
+                        setShowSuggestions(true);
+                        pauseTimer();
+                      }}
+                      onFocus={() => setShowSuggestions(true)}
+                      onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                      autoFocus
+                    />
+                    {showSuggestions && availableNames.length > 0 && (
+                      <div className="absolute z-10 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-48 overflow-auto">
+                        {availableNames.slice(0, 10).map((name) => (
+                          <button
+                            key={name}
+                            className="w-full px-3 py-2 text-left hover:bg-accent text-sm"
+                            onMouseDown={() => handleSuggestionClick(name)}
+                          >
+                            {name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
-            )}
 
-            {/* Column Selection or Exam Input */}
-            <div className="space-y-2">
-              <Label>{isExam ? 'Enter Score' : 'Select Level'}</Label>
+                {/* Column Selection or Exam Input */}
+                <div className="space-y-2">
+                  <Label>{isExam ? 'Enter Score' : 'Select Level'}</Label>
 
-              {isExam ? (
-                <div className="space-y-4">
-                  {currentRow?.description && (
-                    <p className="text-sm text-muted-foreground bg-secondary/10 p-3 rounded-md">
-                      {currentRow.description}
-                    </p>
+                  {isExam ? (
+                    <div className="space-y-4">
+                      {currentRow?.description && (
+                        <p className="text-sm text-muted-foreground bg-secondary/10 p-3 rounded-md">
+                          {currentRow.description}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-4">
+                        <div className="flex-1">
+                          <div className="relative">
+                            <Input
+                              type="number"
+                              min="0"
+                              max={currentRow?.maxPoints || 100}
+                              step="0.5"
+                              value={currentManualScore !== undefined ? currentManualScore : ''}
+                              onChange={(e) => {
+                                const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
+                                setCurrentManualScore(val);
+                                pauseTimer();
+                              }}
+                              className="h-14 text-lg"
+                              placeholder="Points..."
+                              autoFocus={!isFirstRow} // Focus input if not first row (where name input is focused)
+                            />
+                            <span className="absolute right-4 top-4 text-muted-foreground font-medium">
+                              / {currentRow?.maxPoints || 0}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid gap-3">
+                      {rubric.columns.map((col) => {
+                        const criteria = getCriteriaValue(currentRow?.id || '', col.id);
+                        const isSelected = selectedColumn === col.id;
+
+                        return (
+                          <button
+                            key={col.id}
+                            onClick={() => {
+                              handleColumnSelect(col.id);
+                              pauseTimer();
+                            }}
+                            className={cn(
+                              "w-full p-4 rounded-lg border-2 text-left transition-all",
+                              "hover:border-primary/50 hover:bg-primary/5",
+                              isSelected
+                                ? "border-primary bg-primary/10 ring-2 ring-primary/20"
+                                : "border-muted bg-muted/30"
+                            )}
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-medium">{col.name}</span>
+                              <span className="text-sm text-muted-foreground">{col.points} pts</span>
+                            </div>
+                            <p className={cn(
+                              "text-sm",
+                              isSelected ? "text-foreground" : "text-muted-foreground"
+                            )}>
+                              {criteria || <em className="opacity-50">No criteria</em>}
+                            </p>
+                            {isSelected && (
+                              <div className="flex items-center gap-2 mt-2 text-primary">
+                                <Check className="h-4 w-4" />
+                                <span className="text-sm font-medium">Selected</span>
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
-                  <div className="flex items-center gap-4">
-                    <div className="flex-1">
-                      <div className="relative">
-                        <Input
-                          type="number"
-                          min="0"
-                          max={currentRow?.maxPoints || 100}
-                          step="0.5"
-                          value={currentManualScore !== undefined ? currentManualScore : ''}
-                          onChange={(e) => {
-                            const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
-                            setCurrentManualScore(val);
-                          }}
-                          className="h-14 text-lg"
-                          placeholder="Points..."
-                          autoFocus={!isFirstRow} // Focus input if not first row (where name input is focused)
-                        />
-                        <span className="absolute right-4 top-4 text-muted-foreground font-medium">
-                          / {currentRow?.maxPoints || 0}
-                        </span>
+                </div>
+
+                {/* Calculation Points Checkbox */}
+                {(selectedColumn || (isExam && currentManualScore !== undefined)) && currentRow?.calculationPoints && currentRow.calculationPoints > 0 && (
+                  <div className="p-4 bg-muted/30 rounded-lg border border-dashed border-muted-foreground/50">
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        id="calculation-check"
+                        checked={calculationCorrect}
+                        onChange={(e) => {
+                          setCalculationCorrect(e.target.checked);
+                          pauseTimer();
+                        }}
+                        className="mt-1 h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary"
+                      />
+                      <div className="grid gap-1.5 leading-none">
+                        <Label htmlFor="calculation-check" className="text-base font-medium cursor-pointer">
+                          Award Calculation Points (+{currentRow.calculationPoints})
+                        </Label>
+                        <p className="text-sm text-muted-foreground">
+                          Uncheck if the student made a calculation error, even if the logic was correct.
+                        </p>
                       </div>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="grid gap-3">
-                  {rubric.columns.map((col) => {
-                    const criteria = getCriteriaValue(currentRow?.id || '', col.id);
-                    const isSelected = selectedColumn === col.id;
+                )}
 
-                    return (
-                      <button
-                        key={col.id}
-                        onClick={() => handleColumnSelect(col.id)}
-                        className={cn(
-                          "w-full p-4 rounded-lg border-2 text-left transition-all",
-                          "hover:border-primary/50 hover:bg-primary/5",
-                          isSelected
-                            ? "border-primary bg-primary/10 ring-2 ring-primary/20"
-                            : "border-muted bg-muted/30"
-                        )}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-medium">{col.name}</span>
-                          <span className="text-sm text-muted-foreground">{col.points} pts</span>
-                        </div>
-                        <p className={cn(
-                          "text-sm",
-                          isSelected ? "text-foreground" : "text-muted-foreground"
-                        )}>
-                          {criteria || <em className="opacity-50">No criteria</em>}
-                        </p>
-                        {isSelected && (
-                          <div className="flex items-center gap-2 mt-2 text-primary">
-                            <Check className="h-4 w-4" />
-                            <span className="text-sm font-medium">Selected</span>
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Calculation Points Checkbox */}
-            {(selectedColumn || (isExam && currentManualScore !== undefined)) && currentRow?.calculationPoints && currentRow.calculationPoints > 0 && (
-              <div className="p-4 bg-muted/30 rounded-lg border border-dashed border-muted-foreground/50">
-                <div className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    id="calculation-check"
-                    checked={calculationCorrect}
-                    onChange={(e) => setCalculationCorrect(e.target.checked)}
-                    className="mt-1 h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary"
-                  />
-                  <div className="grid gap-1.5 leading-none">
-                    <Label htmlFor="calculation-check" className="text-base font-medium cursor-pointer">
-                      Award Calculation Points (+{currentRow.calculationPoints})
+                {/* Cell Feedback */}
+                {(selectedColumn || (isExam && currentManualScore !== undefined)) && (
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4" />
+                      Feedback for this cell (optional)
                     </Label>
-                    <p className="text-sm text-muted-foreground">
-                      Uncheck if the student made a calculation error, even if the logic was correct.
-                    </p>
+                    <Textarea
+                      placeholder="Add specific feedback..."
+                      value={currentCellFeedback}
+                      onChange={(e) => {
+                        setCurrentCellFeedback(e.target.value);
+                        pauseTimer();
+                      }}
+                      className="min-h-[80px]"
+                    />
                   </div>
-                </div>
-              </div>
-            )}
-
-            {/* Cell Feedback */}
-            {(selectedColumn || (isExam && currentManualScore !== undefined)) && (
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4" />
-                  Feedback for this cell (optional)
-                </Label>
-                <Textarea
-                  placeholder="Add specific feedback..."
-                  value={currentCellFeedback}
-                  onChange={(e) => setCurrentCellFeedback(e.target.value)}
-                  className="min-h-[80px]"
-                />
-              </div>
+                )}
+              </>
             )}
 
             {/* Next Student Button */}
             <Button
               onClick={handleNextStudent}
-              disabled={!currentStudentName.trim() || (isExam ? currentManualScore === undefined : !selectedColumn)}
+              disabled={gradingPhase === 'initial' && (!currentStudentName.trim() || (isExam ? currentManualScore === undefined : !selectedColumn))}
               className="w-full gap-2"
               size="lg"
             >
-              Next Student
+              {gradingPhase === 'review' ? 'Next Review' : 'Next Student'}
               <ArrowRight className="h-4 w-4" />
             </Button>
           </CardContent>
@@ -1228,6 +1436,21 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
               You have graded all students in this round. What would you like to do next?
             </DialogDescription>
           </DialogHeader>
+          <div className="py-4">
+            <div className="flex items-center gap-2 bg-muted/50 px-3 py-2 rounded-lg border">
+              <Switch
+                id="auto-download-check"
+                checked={autoDownloadPdf}
+                onCheckedChange={setAutoDownloadPdf}
+              />
+              <Label htmlFor="auto-download-check" className="text-sm font-medium cursor-pointer">
+                Auto-download PDF during review
+              </Label>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2 px-1">
+              If enabled, a PDF will be downloaded automatically each time you click "Next Student" in the review phase.
+            </p>
+          </div>
           <DialogFooter className="flex gap-2 sm:justify-end">
             <Button variant="outline" onClick={finishGrading}>
               Save & Exit
