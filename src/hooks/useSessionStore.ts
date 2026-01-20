@@ -19,6 +19,15 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     currentSession: null,
 
     saveSession: async (rubricId: string, sessionState: GradingSessionState) => {
+        // Validation: Early return if no valid progress to save
+        if (!sessionState.studentOrder || sessionState.studentOrder.length === 0) {
+            // Check if we have data despite no order (edge case)
+            if (!sessionState.studentsData || Object.keys(sessionState.studentsData).length === 0) {
+                console.log(`[useSessionStore] Skipping save: No student data/order to persist for ${rubricId}`);
+                return;
+            }
+        }
+
         console.log(`[useSessionStore] saveSession triggered for rubric ${rubricId}`);
         try {
             const { data: { user } } = await supabase.auth.getUser();

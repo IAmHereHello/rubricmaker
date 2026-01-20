@@ -272,10 +272,16 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className }
     const dataObj: Record<string, StudentGradingData> = {};
     studentsData.forEach((val, key) => { dataObj[key] = val; });
 
+    // Ensure we have a valid student order to save.
+    // If studentOrder is empty (start of session), we might want to preserve initial names if available?
+    // But persistence usually saves "Work Done".
+    // If we rely on initialStudentNames for structure, we should consider saving it in the session object?
+    // The current GradingSessionState type has 'studentOrder'.
+
     const sessionState: GradingSessionState = {
       rubricId,
       currentRowIndex,
-      studentOrder,
+      studentOrder: studentOrder.length > 0 ? studentOrder : [],
       currentStudentIndex,
       studentsData: dataObj,
       timestamp: Date.now(),
