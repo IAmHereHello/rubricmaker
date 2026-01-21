@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -16,49 +16,85 @@ interface Step6ThresholdsProps {
 
 export function Step6Thresholds({ onComplete, onBack }: Step6ThresholdsProps) {
   const { currentRubric, setThresholds } = useRubricStore();
+  const [activeScale, setActiveScale] = useState<'default' | 'orange' | 'yellow' | 'blue'>('default');
 
   const columns = currentRubric?.columns || [];
   const rows = currentRubric?.rows || [];
-  const thresholds = currentRubric?.thresholds || [];
+
+  // Get thresholds for current view
+  const getThresholds = () => {
+    if (activeScale === 'default') return currentRubric?.thresholds || [];
+    return currentRubric?.gradingScales?.[activeScale] || [];
+  };
+
+  const thresholds = getThresholds();
   const scoringMode = currentRubric?.scoringMode || 'discrete';
 
-  // Calculate max points based on scoring mode
+  // Calculate max points based on scoring mode and active route
   const maxPointsPerRow = scoringMode === 'cumulative'
     ? columns.reduce((sum, col) => sum + col.points, 0)
     : Math.max(...columns.map((c) => c.points), 0);
-  const totalPossiblePoints = maxPointsPerRow * rows.length;
 
+  const calculateTotalPoints = () => {
+    const route = activeScale === 'default' ? undefined : activeScale;
+    const applicableRows = !route
+      ? rows
+      : rows.filter(r => (r.routes || ['orange', 'yellow', 'blue']).includes(route));
+
+    return (maxPointsPerRow * applicableRows.length) + applicableRows.reduce((sum, r) => sum + (r.calculationPoints || 0), 0);
+  };
+
+  const totalPossiblePoints = calculateTotalPoints();
+
+  // Initialize thresholds if empty
   useEffect(() => {
     if (thresholds.length === 0 && totalPossiblePoints > 0) {
       const third = Math.floor(totalPossiblePoints / 3);
-      setThresholds([
+      const defaults = [
         { min: 0, max: third, status: 'development', label: 'In Ontwikkeling', requiresNoLowest: false },
         { min: third + 1, max: third * 2, status: 'mastered', label: 'Beheerst', requiresNoLowest: false },
         { min: third * 2 + 1, max: null, status: 'expert', label: 'Expert', requiresNoLowest: false },
-      ]);
+      ] as Threshold[]; // Cast needed?
+
+      updateThresholds(defaults);
     }
-  }, [totalPossiblePoints, thresholds.length, setThresholds]);
+  }, [totalPossiblePoints, thresholds.length, activeScale]);
+
+  const updateThresholds = (newThresholds: Threshold[]) => {
+    if (activeScale === 'default') {
+      setThresholds(newThresholds);
+    } else {
+      const currentScales = currentRubric?.gradingScales || {};
+      // @ts-ignore
+      useRubricStore.getState().updateCurrentRubric({
+        gradingScales: {
+          ...currentScales,
+          [activeScale]: newThresholds
+        }
+      });
+    }
+  };
 
   const handleThresholdChange = (index: number, field: 'min' | 'max', value: number | null) => {
     const newThresholds = thresholds.map((t, i) =>
       i === index ? { ...t, [field]: value } : t
     );
-    setThresholds(newThresholds);
+    updateThresholds(newThresholds);
   };
 
   const handleRequiresNoLowestChange = (index: number, checked: boolean) => {
     const newThresholds = thresholds.map((t, i) =>
       i === index ? { ...t, requiresNoLowest: checked } : t
     );
-    setThresholds(newThresholds);
+    updateThresholds(newThresholds);
   };
 
   const autoDistribute = () => {
     const third = Math.floor(totalPossiblePoints / 3);
-    setThresholds([
-      { min: 0, max: third, status: 'development', label: 'In Ontwikkeling', requiresNoLowest: false },
-      { min: third + 1, max: third * 2, status: 'mastered', label: 'Beheerst', requiresNoLowest: false },
-      { min: third * 2 + 1, max: null, status: 'expert', label: 'Expert', requiresNoLowest: false },
+    updateThresholds([
+      { min: 0, max: third, status: 'development' as const, label: 'In Ontwikkeling', requiresNoLowest: false },
+      { min: third + 1, max: third * 2, status: 'mastered' as const, label: 'Beheerst', requiresNoLowest: false },
+      { min: third * 2 + 1, max: null, status: 'expert' as const, label: 'Expert', requiresNoLowest: false },
     ]);
   };
 
@@ -70,7 +106,7 @@ export function Step6Thresholds({ onComplete, onBack }: Step6ThresholdsProps) {
   const lowestColumn = columns.length > 0 ? columns[0] : null;
 
   return (
-    <Card className="mx-auto max-w-2xl shadow-soft animate-fade-in">
+    <Card className="mx-auto max-w-2xl shadow-soft animate-fade-in mb-20">
       <CardHeader className="text-center">
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
           <Gauge className="h-7 w-7 text-primary" />
@@ -79,13 +115,42 @@ export function Step6Thresholds({ onComplete, onBack }: Step6ThresholdsProps) {
         <CardDescription className="text-base">
           Define the score ranges for each performance status
         </CardDescription>
+
+        {/* Scale Selector */}
+        <div className="flex justify-center gap-2 mt-4 p-1 bg-muted rounded-lg inline-flex mx-auto">
+          {(['default', 'orange', 'yellow', 'blue'] as const).map((scale) => (
+            <button
+              key={scale}
+              onClick={() => setActiveScale(scale)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all capitalize ${activeScale === scale
+                ? 'bg-background shadow-sm text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+                } ${scale === 'orange' && activeScale === scale ? 'text-orange-600' : ''
+                } ${scale === 'yellow' && activeScale === scale ? 'text-yellow-600' : ''
+                } ${scale === 'blue' && activeScale === scale ? 'text-blue-600' : ''
+                }`}
+            >
+              {scale === 'default' ? 'Standard' : scale}
+            </button>
+          ))}
+        </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="rounded-lg bg-muted p-4 text-center">
-          <span className="text-sm text-muted-foreground">Total Possible Points</span>
-          <p className="text-3xl font-bold text-primary">{totalPossiblePoints} pts</p>
+        <div className={`rounded-lg p-4 text-center border-2 ${activeScale === 'orange' ? 'border-orange-100 bg-orange-50/50' :
+          activeScale === 'yellow' ? 'border-yellow-100 bg-yellow-50/50' :
+            activeScale === 'blue' ? 'border-blue-100 bg-blue-50/50' :
+              'border-transparent bg-muted'
+          }`}>
+          <span className="text-sm text-muted-foreground capitalize">
+            {activeScale === 'default' ? 'Global' : activeScale} Possible Points
+          </span>
+          <p className={`text-3xl font-bold ${activeScale === 'orange' ? 'text-orange-600' :
+            activeScale === 'yellow' ? 'text-yellow-600' :
+              activeScale === 'blue' ? 'text-blue-600' :
+                'text-primary'
+            }`}>{totalPossiblePoints} pts</p>
           <p className="text-xs text-muted-foreground">
-            {rows.length} goals × {maxPointsPerRow} max points per goal
+            Based on active questions/rows for this route
           </p>
         </div>
 
@@ -139,8 +204,8 @@ export function Step6Thresholds({ onComplete, onBack }: Step6ThresholdsProps) {
                   )}
                 </div>
               </div>
-              
-              {/* Advanced Requirements */}
+
+              {/* Advanced Requirements - Only show for Default/Global? Or allow per route? Allow per route. */}
               {threshold.status !== 'development' && (
                 <div className="border-t pt-3 mt-3">
                   <div className="flex items-start space-x-3">

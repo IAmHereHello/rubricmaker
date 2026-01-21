@@ -3,7 +3,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Edit3, ArrowRight, ArrowLeft, Check, ChevronRight, Star } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Edit3, ArrowRight, ArrowLeft, Check, ChevronRight, Star, Split } from 'lucide-react';
 import { useRubricStore } from '@/hooks/useRubricStore';
 import { cn } from '@/lib/utils';
 
@@ -27,18 +29,67 @@ export function Step5Criteria({ onNext, onBack }: Step5CriteriaProps) {
 
   const selectedRow = rows.find((r) => r.id === selectedCell?.rowId);
   const selectedColumn = columns.find((c) => c.id === selectedCell?.columnId);
+  const currentCriteria = selectedCell ? criteria.find(c => c.rowId === selectedCell.rowId && c.columnId === selectedCell.columnId) : null;
 
-  const currentDescription = selectedCell
-    ? getCriteriaValue(selectedCell.rowId, selectedCell.columnId)
-    : '';
+  const [isABEnabled, setIsABEnabled] = useState(false);
 
-  const handleDescriptionChange = (description: string) => {
+  useEffect(() => {
+    if (selectedCell) {
+      setIsABEnabled(!!currentCriteria?.versions);
+    }
+  }, [selectedCell?.rowId, selectedCell?.columnId]);
+
+  const currentDescription = currentCriteria?.description || '';
+  const currentVersionA = currentCriteria?.versions?.A || '';
+  const currentVersionB = currentCriteria?.versions?.B || '';
+
+  const handleDescriptionChange = (desc: string) => {
     if (selectedCell) {
       setCriteria({
         rowId: selectedCell.rowId,
         columnId: selectedCell.columnId,
-        description,
+        description: desc,
+        versions: currentCriteria?.versions // maintain versions if they validly exist? Or clear them if mode disabled?
+        // Actually, if we are in normal mode, we update description.
+        // If we switch modes, we might want to sync?
       });
+    }
+  };
+
+  const handleVersionChange = (version: 'A' | 'B', value: string) => {
+    if (!selectedCell) return;
+
+    const newVersions = {
+      A: currentVersionA,
+      B: currentVersionB,
+      [version]: value
+    };
+
+    setCriteria({
+      rowId: selectedCell.rowId,
+      columnId: selectedCell.columnId,
+      description: currentDescription, // Keep description as fallback? or sync?
+      versions: newVersions
+    });
+  };
+
+  const toggleABMode = (checked: boolean) => {
+    setIsABEnabled(checked);
+    if (selectedCell) {
+      if (checked) {
+        // Enable: Init versions if empty
+        setCriteria({
+          rowId: selectedCell.rowId,
+          columnId: selectedCell.columnId,
+          description: currentDescription,
+          versions: { A: currentDescription, B: currentDescription } // default clone
+        });
+      } else {
+        // Disable: Clear versions? Or just keep them?
+        // The prompt implies we toggle "Enable A/B Versions".
+        // Let's keep data but maybe update description to A?
+        // For now, just update the local state which controls UI.
+      }
     }
   };
 
@@ -197,14 +248,50 @@ export function Step5Criteria({ onNext, onBack }: Step5CriteriaProps) {
                       {selectedColumn?.name} ({selectedColumn?.points} pts)
                     </p>
                   </div>
-                  <Textarea
-                    ref={textareaRef}
-                    value={currentDescription}
-                    onChange={(e) => handleDescriptionChange(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder="Describe what this performance level looks like for this learning goal..."
-                    className="flex-1 resize-none"
-                  />
+                  <div className="flex items-center justify-between mb-3 px-1">
+                    <Label htmlFor="ab-mode" className="text-xs font-medium text-muted-foreground flex items-center gap-2 cursor-pointer">
+                      <Split className="h-3 w-3" />
+                      Enable A/B Test Versions
+                    </Label>
+                    <Switch
+                      id="ab-mode"
+                      checked={isABEnabled}
+                      onCheckedChange={toggleABMode}
+                      className="scale-75 origin-right"
+                    />
+                  </div>
+
+                  {isABEnabled ? (
+                    <div className="grid grid-cols-2 gap-3 flex-1 min-h-0">
+                      <div className="flex flex-col gap-2 h-full">
+                        <Label className="text-xs text-orange-600 font-bold">Version A</Label>
+                        <Textarea
+                          value={currentVersionA}
+                          onChange={(e) => handleVersionChange('A', e.target.value)}
+                          placeholder="Describe Version A..."
+                          className="flex-1 resize-none text-sm"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2 h-full">
+                        <Label className="text-xs text-blue-600 font-bold">Version B</Label>
+                        <Textarea
+                          value={currentVersionB}
+                          onChange={(e) => handleVersionChange('B', e.target.value)}
+                          placeholder="Describe Version B..."
+                          className="flex-1 resize-none text-sm"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <Textarea
+                      ref={textareaRef}
+                      value={currentDescription}
+                      onChange={(e) => handleDescriptionChange(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      placeholder="Describe what this performance level looks like for this learning goal..."
+                      className="flex-1 resize-none"
+                    />
+                  )}
                   <div className="flex items-center justify-between mt-3">
                     <span className="text-xs text-muted-foreground">
                       <kbd className="px-1.5 py-0.5 rounded bg-muted text-xs font-mono">Ctrl+Enter</kbd> to save & next

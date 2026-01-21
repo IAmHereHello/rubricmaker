@@ -35,6 +35,7 @@ export function Step4Rows({ onNext, onBack }: Step4RowsProps) {
         name: newRowName.trim(),
         isBonus: false,
         calculationPoints: 0,
+        routes: ['orange', 'yellow', 'blue'],
       });
       setNewRowName('');
     }
@@ -52,6 +53,7 @@ export function Step4Rows({ onNext, onBack }: Step4RowsProps) {
         name,
         isBonus: false,
         calculationPoints: 0,
+        routes: ['orange', 'yellow', 'blue'] as ('orange' | 'yellow' | 'blue')[],
       }));
       addRows(newRows);
       setBulkInput('');
@@ -233,6 +235,39 @@ export function Step4Rows({ onNext, onBack }: Step4RowsProps) {
                     onChange={(e) => updateRow(row.id, { calculationPoints: parseInt(e.target.value) || 0 })}
                     className="w-20 h-8"
                   />
+                </div>
+              </div>
+
+              {/* Route Selector */}
+              <div className="mt-2 flex items-center gap-2 pl-10">
+                <span className="text-xs text-muted-foreground">Routes:</span>
+                <div className="flex gap-1.5">
+                  {(['orange', 'yellow', 'blue'] as const).map((color) => {
+                    const isActive = (row.routes || ['orange', 'yellow', 'blue']).includes(color);
+                    return (
+                      <button
+                        key={color}
+                        onClick={() => {
+                          const current = row.routes || ['orange', 'yellow', 'blue'];
+                          const newRoutes = current.includes(color)
+                            ? current.filter(r => r !== color)
+                            : [...current, color];
+                          updateRow(row.id, { routes: newRoutes });
+                        }}
+                        className={cn(
+                          "h-5 w-5 rounded-full border-2 transition-all",
+                          color === 'orange' && "border-orange-500",
+                          color === 'yellow' && "border-yellow-500",
+                          color === 'blue' && "border-blue-500",
+                          isActive ? (
+                            color === 'orange' ? "bg-orange-500" :
+                              color === 'yellow' ? "bg-yellow-500" : "bg-blue-500"
+                          ) : "bg-transparent opacity-30 hover:opacity-60"
+                        )}
+                        title={`Toggle ${color} route`}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             </div>

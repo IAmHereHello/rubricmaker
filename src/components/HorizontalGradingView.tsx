@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
-import { ArrowLeft, ArrowRight, Check, Users, Target, MessageSquare, Download } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Users, Target, MessageSquare, Download, History, Pencil, X } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useRubricStore } from '@/hooks/useRubricStore';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Badge } from '@/components/ui/badge';
@@ -100,9 +101,8 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
 
   // State for UX Refinements
-  const [timerActive, setTimerActive] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(100); // 100% progress
-  const [timerPaused, setTimerPaused] = useState(false);
+  // Timer removed per request
+
 
 
   // State for student names (prop OR hydrated from session)
@@ -147,6 +147,24 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
   }, [rubric.id, privacyKey]);
   // Current column selection for this student+row
   const [selectedColumn, setSelectedColumn] = useState<string | null>(null);
+
+  // Helper to update route/version
+  const handleUpdateStudentContext = (field: 'selectedRoute' | 'rubricVersion', value: string) => {
+    if (!currentStudentName) return;
+    updateStudentData(currentStudentName, { [field]: value });
+  };
+
+  const handleToggleNotMade = () => {
+    if (!currentStudentName || !currentRow) return;
+
+    const currentNotMade = currentStudentData.notMadeRows?.[currentRow.id] || false;
+    const newNotMade = { ...(currentStudentData.notMadeRows || {}), [currentRow.id]: !currentNotMade };
+
+    updateStudentData(currentStudentName, { notMadeRows: newNotMade });
+
+    // Clear score if setting to not made? Or just keep it but ignore in calc?
+    // Requirement says "Treats as 0 points". Logic already handled in calc.
+  };
   // Manual score for exams
   const [currentManualScore, setCurrentManualScore] = useState<number | undefined>(undefined);
   // Calculation point checkbox state
@@ -155,11 +173,9 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
   const isExam = rubric.type === 'exam';
   const isMastery = rubric.gradingMethod === 'mastery';
 
-  // Time Tracking State
+  // Time Tracking (Simplified)
   const [sessionStartTime] = useState<number>(Date.now());
   const [completedStudentCount, setCompletedStudentCount] = useState(0);
-  const [sessionGradedCount, setSessionGradedCount] = useState(0);
-  const [firstStudentDuration, setFirstStudentDuration] = useState<number | null>(null);
 
   // Autosave State
   const [autosaveEnabled, setAutosaveEnabled] = useState(true);
@@ -186,8 +202,19 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
     selections: {},
     cellFeedback: [],
     generalFeedback: '',
-    calculationCorrect: {}
+    calculationCorrect: {},
+    selectedRoute: 'blue', // Default
+    rubricVersion: 'A', // Default
+    notMadeRows: {}
   } as StudentGradingData;
+
+  // Determine if current row is relevant for this student's route
+  const isRowInRoute = useMemo(() => {
+    if (!currentStudentData.selectedRoute) return true;
+    const route = currentStudentData.selectedRoute;
+    // If row has no routes defined, it applies to all. Else check inclusion.
+    return !currentRow?.routes || currentRow.routes.includes(route);
+  }, [currentRow, currentStudentData.selectedRoute]);
 
   const gradingUnits = useMemo(() => {
     if (isMastery && rubric.learningGoalRules) {
@@ -411,7 +438,22 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
     const rowScores: { [rowId: string]: number } = {};
     let total = 0;
 
+    // Check Route
+    const route = data.selectedRoute || 'blue';
+
     rubric.rows.forEach((row) => {
+      // Skip if row not in student's route
+      if (row.routes && !row.routes.includes(route)) {
+        rowScores[row.id] = 0;
+        return;
+      }
+
+      // Skip if marked "Not Made"
+      if (data.notMadeRows?.[row.id]) {
+        rowScores[row.id] = 0;
+        return;
+      }
+
       // Exam Mode
       if (isExam) {
         const score = data.rowScores?.[row.id] || 0;
@@ -419,9 +461,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
 
         if (row.maxPoints && score > row.maxPoints) rowPoints = row.maxPoints;
 
-        // Add Calc points if checked?
-        // Horizontal view DOES have calc points checkbox.
-        // Logic below handles it if calculationPoints > 0
+        // Add Calc points
         if (row.calculationPoints && row.calculationPoints > 0) {
           const isCorrect = data.calculationCorrect?.[row.id] !== false;
           if (isCorrect) {
@@ -456,7 +496,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
 
       // Add Calculation Points if verified
       if (row.calculationPoints && row.calculationPoints > 0) {
-        const isCorrect = data.calculationCorrect?.[row.id] !== false; // Default true if undefined, but logic handles explicit false
+        const isCorrect = data.calculationCorrect?.[row.id] !== false;
         if (isCorrect) {
           rowPoints += row.calculationPoints;
         }
@@ -483,7 +523,13 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
       })
       : false;
 
-    const sortedThresholds = [...rubric.thresholds].sort((a, b) => b.min - a.min);
+    // Determine active Route Scale
+    const route = data?.selectedRoute;
+    const activeThresholds = (route && rubric.gradingScales?.[route])
+      ? rubric.gradingScales[route]!
+      : rubric.thresholds;
+
+    const sortedThresholds = [...activeThresholds].sort((a, b) => b.min - a.min);
 
     for (const threshold of sortedThresholds) {
       const meetsScoreRequirement = threshold.max === null
@@ -498,8 +544,8 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
       }
     }
 
-    return rubric.thresholds[0] || null;
-  }, [rubric, studentsData, calculateStudentScore]);
+    return activeThresholds[0] || null;
+  }, [rubric, studentsData, calculateStudentScore, isExam]);
 
   // -- Handlers --
 
@@ -559,12 +605,6 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
     // Track Progress
     setCompletedStudentCount(prev => prev + 1);
 
-    // Time Tracking Update
-    if (sessionGradedCount === 0) {
-      setFirstStudentDuration(Date.now() - sessionStartTime);
-    }
-    setSessionGradedCount(prev => prev + 1);
-
     // If first unit, add to student order
     if (isFirstUnit) {
       setStudentOrder(prev => [...prev, currentStudentName]);
@@ -592,16 +632,70 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
         setCurrentStudentIndex(prev => prev + 1);
       }
     }
-
-    // Reset UX State
-    setTimerPaused(false);
-    setTimeLeft(100);
-    // Restart timer if we want it auto-active? 
-    // Usually timer is for "Speed Grading". 
-    // Maybe we only auto-start if it was active? 
-    // Keeping it simple: If timerActive is on, it continues for next student.
-    // Ensure 10s reset.
   };
+
+  const handlePreviousStudent = () => {
+    // If first student of first row, do nothing
+    if (isFirstUnit && studentOrder.length === 0) return;
+
+    // If we are deep in the session
+    if (currentStudentIndex > 0) {
+      setCurrentStudentIndex(prev => prev - 1);
+      return;
+    }
+
+    // If at start of a row (but not first row), go to previous row?
+    // User request implies "Navigation" between students.
+    // If I'm at Student 0 of Row 5, "Previous" could go to Student MAX of Row 5 (no, that's cycle) or Student MAX of Row 4? 
+    // Usually users want to stay in same row or go back.
+    // Let's keep it simple: Previous works within the current row.
+    // If index is 0, maybe go to previous unit?
+    if (currentStudentIndex === 0 && currentUnitIndex > 0) {
+      // Go to previous unit, last student
+      // Need to calculate previous unit index
+      const prevUnit = gradingUnits[currentUnitIndex - 1];
+      const prevRowId = prevUnit.rows[0].id; // Simplified mapping
+      const prevRowIndex = rubric.rows.findIndex(r => r.id === prevRowId);
+
+      setCurrentRowIndex(prevRowIndex);
+      setCurrentStudentIndex(studentOrder.length - 1);
+    }
+  };
+
+  // Keyboard Handler
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if focus is in a text area (feedback) or suggestion lists
+      // But we WANT to capture Enter in the Score Input.
+      // Checking activeElement is risky.
+      // Better: explicit check for Shift+Enter vs Enter
+
+      if (e.key === 'Enter') {
+        // If autosuggest is open, let it handle enter
+        if (showSuggestions) return;
+
+        // If Shift is held, go previous
+        if (e.shiftKey) {
+          e.preventDefault();
+          handlePreviousStudent();
+          return;
+        }
+
+        // Normal Enter: Save & Next
+        // Only if we have valid input
+        if (!currentStudentName.trim()) return;
+        if (isExam && currentManualScore === undefined && !currentStudentData.notMadeRows?.[currentRow?.id]) return;
+        // If Assignment and no selection?
+        // handleNextStudent checks these conditions.
+
+        e.preventDefault();
+        handleNextStudent();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentStudentName, currentManualScore, selectedColumn, showSuggestions, isExam, currentRow, currentStudentData]);
 
   const moveToNextUnit = () => {
     // Check if we are done with all units
@@ -645,7 +739,9 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
           status: status?.status || 'development',
           statusLabel: status?.label || 'In Ontwikkeling',
           gradedAt: new Date(),
-          extraConditionsMet: data.extraConditionsMet
+          extraConditionsMet: data.extraConditionsMet,
+          selectedRoute: data.selectedRoute,
+          rubricVersion: data.rubricVersion
         };
 
         addGradedStudent(rubric.id, gradedStudent);
@@ -686,36 +782,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
     onStartReview();
   };
 
-  // -- Timer Logic (Placed here to access handleNextStudent) --
-  const handleNextStudentRef = useRef(handleNextStudent);
-  useEffect(() => {
-    handleNextStudentRef.current = handleNextStudent;
-  }, [handleNextStudent]);
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (timerActive && !timerPaused && timeLeft > 0) {
-      interval = setInterval(() => {
-        setTimeLeft(prev => {
-          const newValue = prev - 1;
-          if (newValue <= 0) {
-            clearInterval(interval);
-            handleNextStudentRef.current();
-            return 100;
-          }
-          return newValue;
-        });
-      }, 100);
-    }
-    return () => clearInterval(interval);
-  }, [timerActive, timerPaused]);
-
-  const pauseTimer = () => {
-    if (timerActive && !timerPaused) {
-      setTimerPaused(true);
-    }
-  };
-
+  // Timer removed
 
   const handleSuggestionClick = (name: string) => {
     setNameInput(name);
@@ -792,43 +859,11 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
   const unitProgress = totalStudents > 0 ? ((studentsGradedThisUnit) / totalStudents) * 100 : 0;
   const rowProgress = unitProgress; // Alias
 
-  // Avg Time Calc
-  const avgTimePerStudent = useMemo(() => {
-    if (sessionGradedCount <= 1) {
-      if (sessionGradedCount === 1 && firstStudentDuration) return Math.round(firstStudentDuration / 1000);
-      return 0;
-    }
-    const totalElapsed = Date.now() - sessionStartTime;
-    const timeOnOthers = totalElapsed - (firstStudentDuration || 0);
-    const countOthers = Math.max(1, sessionGradedCount - 1); // Avoid div by 0
-
-    return Math.max(0, Math.round((timeOnOthers / 1000) / countOthers));
-  }, [sessionGradedCount, sessionStartTime, firstStudentDuration]);
-
-  // Estimated Time Remaining
-  // Formula: (AvgTimePerRow * RowsLeft) + (AvgTimePerStudent * StudentsLeftInRow)
+  // Estimated Time Remaining 
   const estimatedTimeRemaining = useMemo(() => {
-    if (avgTimePerStudent === 0) return null;
-
-    const totalStudents = isFirstRow ? initialStudentNames.length : studentOrder.length;
-    const studentsLeftInRow = totalStudents - studentsGradedThisRow;
-    const rowsLeft = rubric.rows.length - currentRowIndex - 1;
-
-    // AvgTimePerRow = AvgTimePerStudent * TotalStudentsInRow
-    // We assume AvgTimePerStudent is actually "Avg Time Per Cell" (Student-Row combination)
-    const avgTimePerRow = avgTimePerStudent * totalStudents;
-
-    const timeForCurrentRow = avgTimePerStudent * studentsLeftInRow;
-    const timeForFutureRows = avgTimePerRow * rowsLeft;
-
-    const totalSecondsLeft = timeForCurrentRow + timeForFutureRows;
-
-    if (totalSecondsLeft <= 0) return 'Almost done';
-
-    const m = Math.floor(totalSecondsLeft / 60);
-    const s = Math.round(totalSecondsLeft % 60);
-    return `${m}m ${s}s`;
-  }, [avgTimePerStudent, isFirstRow, activeStudentNames.length, studentOrder.length, studentsGradedThisRow, rubric.rows.length, currentRowIndex]);
+    // Removed complex calc for now, or keep simple one based on simplistic stats
+    return null;
+  }, []);
 
 
   const getCriteriaValue = (rowId: string, columnId: string) => {
@@ -850,7 +885,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
           <div className="flex items-center justify-between relative">
             <Button variant="ghost" onClick={() => navigate('/')} className="gap-2">
               <ArrowLeft className="h-4 w-4" />
-              Exit
+              Back to Overview
             </Button>
             <div className="flex flex-col items-center">
               <h1 className="text-lg font-semibold truncate max-w-[200px] md:max-w-none">
@@ -923,10 +958,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
             </div>
           </div>
         </div>
-        {/* Timer Progress Bar - Only visible if active */}
-        {timerActive && (
-          <Progress value={timeLeft} className={cn("h-1 w-full rounded-none transition-all duration-100 ease-linear", timerPaused ? "bg-amber-200" : "bg-primary/20", "[&>div]:bg-primary")} />
-        )}
+        {/* Timer Progress Bar - Removed */}
         {/* Overall Progress */}
         <Progress value={progressPercent} className="h-1 w-full rounded-none opacity-50" />
       </header>
@@ -944,9 +976,8 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
                 <span>Row {currentRowIndex + 1} of {rubric.rows.length}</span>
                 <span className="flex gap-4">
                   <span>{completedCells} of {totalCells} cells</span>
-                  {avgTimePerStudent > 0 && (
-                    <span className="text-primary font-medium">~{avgTimePerStudent}s / student</span>
-                  )}
+                  <span>{completedCells} of {totalCells} cells</span>
+                  {/* Timer UI Removed */}
                   {estimatedTimeRemaining && (
                     <span className="text-muted-foreground ml-2">({estimatedTimeRemaining} left)</span>
                   )}
@@ -995,6 +1026,47 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
                       Conditions: {currentConditionsCount} / {requiredConditionsCount}
                     </div>
                   )}
+                  {/* Route & Version Selectors */}
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <div className="flex items-center gap-1 bg-muted px-2 py-1 rounded-md text-xs">
+                      <span className="text-muted-foreground mr-1">Route:</span>
+                      {(['orange', 'yellow', 'blue'] as const).map(color => (
+                        <button
+                          key={color}
+                          onClick={() => handleUpdateStudentContext('selectedRoute', color)}
+                          className={cn(
+                            "w-4 h-4 rounded-full border border-white/20 transition-all",
+                            color === 'orange' && "bg-orange-500",
+                            color === 'yellow' && "bg-yellow-500",
+                            color === 'blue' && "bg-blue-500",
+                            currentStudentData.selectedRoute === color ? "ring-2 ring-primary ring-offset-1" : "opacity-30 hover:opacity-100"
+                          )}
+                          title={color}
+                        />
+                      ))}
+                    </div>
+
+                    <div className="flex items-center gap-1 bg-muted px-2 py-1 rounded-md text-xs">
+                      <span className="text-muted-foreground mr-1">Version:</span>
+                      <div className="flex bg-background rounded border overflow-hidden">
+                        <button
+                          onClick={() => handleUpdateStudentContext('rubricVersion', 'A')}
+                          className={cn(
+                            "px-2 py-0.5 hover:bg-accent transition-colors",
+                            currentStudentData.rubricVersion === 'A' && "bg-primary text-primary-foreground font-bold"
+                          )}
+                        >A</button>
+                        <div className="w-px bg-border" />
+                        <button
+                          onClick={() => handleUpdateStudentContext('rubricVersion', 'B')}
+                          className={cn(
+                            "px-2 py-0.5 hover:bg-accent transition-colors",
+                            currentStudentData.rubricVersion === 'B' && "bg-primary text-primary-foreground font-bold"
+                          )}
+                        >B</button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -1035,7 +1107,6 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
                   onChange={(e) => {
                     setNameInput(e.target.value);
                     setShowSuggestions(true);
-                    pauseTimer();
                   }}
                   onFocus={() => setShowSuggestions(true)}
                   onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
@@ -1057,42 +1128,171 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
               </div>
             )}
 
-            {/* Column Selection or Exam Inpu t*/}
-            <GradingInput
-              row={currentRow}
-              rubric={rubric}
-              selectedValue={isExam ? currentManualScore : selectedColumn}
-              onChange={(val, feedback, correct) => {
-                pauseTimer();
-                if (isExam) {
-                  setCurrentManualScore(val as number);
-                } else {
-                  handleColumnSelect(val as string);
-                }
-              }}
-              isExam={isExam}
-              cellFeedback={currentCellFeedback}
-              onFeedbackChange={(fb) => {
-                setCurrentCellFeedback(fb);
-                pauseTimer();
-              }}
-              calculationCorrect={calculationCorrect}
-              onCalculationChange={(correct) => {
-                setCalculationCorrect(correct);
-                pauseTimer();
-              }}
-            />
+            {/* Content Area */}
+            <div className={cn(
+              "p-4 min-h-[300px] flex flex-col items-center justify-center animate-fade-in relative",
+              !isRowInRoute && "opacity-50 grayscale-[0.8]"
+            )}>
+              {!isRowInRoute && (
+                <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+                  <Badge variant="outline" className="bg-background/80 backdrop-blur-sm text-muted-foreground border-dashed">
+                    Skipped for {currentStudentData.selectedRoute} route
+                  </Badge>
+                </div>
+              )}
+              <h3 className="text-xl font-semibold text-center mb-2">
+                {currentRow.name}
+                {currentRow.isBonus && (
+                  <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
+                    Bonus
+                  </span>
+                )}
+                {currentStudentData.notMadeRows?.[currentRow.id] && (
+                  <Badge variant="destructive" className="ml-2">Niet Gemaakt</Badge>
+                )}
+              </h3>
 
-            {/* Next Student Button */}
-            <Button
-              onClick={handleNextStudent}
-              disabled={!currentStudentName.trim() || (isExam ? currentManualScore === undefined : !selectedColumn)}
-              className="w-full gap-2"
-              size="lg"
-            >
-              Next Student
-              <ArrowRight className="h-4 w-4" />
-            </Button>
+              <div className="w-full max-w-2xl space-y-4">
+                {/* Main Input Component */}
+                <GradingInput
+                  row={currentRow}
+                  rubric={rubric}
+                  selectedValue={isExam ? currentManualScore : selectedColumn}
+                  onChange={(val, feedback, correct) => {
+                    if (isExam) {
+                      setCurrentManualScore(val as number);
+                    } else {
+                      handleColumnSelect(val as string);
+                    }
+                  }}
+                  isExam={isExam}
+                  cellFeedback={currentCellFeedback}
+                  onFeedbackChange={(fb) => {
+                    setCurrentCellFeedback(fb);
+                  }}
+                  calculationCorrect={calculationCorrect}
+                  onCalculationChange={(correct) => {
+                    setCalculationCorrect(correct);
+                  }}
+                  readOnly={currentStudentData.notMadeRows?.[currentRow.id]}
+                  version={currentStudentData.rubricVersion}
+                />
+
+                {/* Not Made Button */}
+                <div className="flex justify-center">
+                  <Button
+                    variant={currentStudentData.notMadeRows?.[currentRow.id] ? "destructive" : "ghost"}
+                    size="sm"
+                    onClick={handleToggleNotMade}
+                    title="Mark as Not Made / N.v.t."
+                    className="opacity-70 hover:opacity-100"
+                  >
+                    {currentStudentData.notMadeRows?.[currentRow.id] ? "Mark as Made" : "Mark as Not Made / N.v.t."}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-4 mt-4">
+              <Button
+                onClick={handlePreviousStudent}
+                disabled={currentStudentIndex === 0 && isFirstRow}
+                variant="outline"
+                className="flex-1 gap-2"
+                size="lg"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Previous
+              </Button>
+              <Button
+                onClick={handleNextStudent}
+                disabled={!currentStudentName.trim() || (isExam ? currentManualScore === undefined : !selectedColumn)}
+                className="flex-[2] gap-2"
+                size="lg"
+              >
+                Next Student
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* History / Context Panel */}
+            {currentRowIndex > 0 && (
+              <div className="mt-8 pt-6 border-t">
+                <h4 className="flex items-center gap-2 text-sm font-semibold text-muted-foreground mb-4">
+                  <History className="h-4 w-4" />
+                  History & Context (This Student)
+                </h4>
+                <div className="space-y-3">
+                  {rubric.rows.slice(0, currentRowIndex).reverse().map((histRow) => {
+                    const histSelectionIdx = currentStudentData.selections?.[histRow.id];
+                    const histScore = currentStudentData.rowScores?.[histRow.id];
+                    const histCol = rubric.columns.find(c => c.id === histSelectionIdx);
+
+                    const displayValue = isExam
+                      ? (histScore !== undefined ? `${histScore} / ${histRow.maxPoints || '?'}` : 'Not Graded')
+                      : (histCol ? `${histCol.name} (${histCol.points}pts)` : 'Not Graded');
+
+                    return (
+                      <div key={histRow.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/40 border group hover:bg-muted/60 transition-colors">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">{histRow.name}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {displayValue}
+                          </p>
+                        </div>
+
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-80 sm:w-96 p-4" side="left">
+                            <div className="space-y-4">
+                              <div className="flex items-center justify-between border-b pb-2">
+                                <h4 className="font-semibold text-sm">Edit: {histRow.name}</h4>
+                              </div>
+                              <GradingInput
+                                row={histRow}
+                                rubric={rubric}
+                                selectedValue={isExam ? histScore : histSelectionIdx}
+                                isExam={isExam}
+                                version={currentStudentData.rubricVersion}
+                                onChange={(val, fb, correct) => {
+                                  const newData = getStudentData(currentStudentName);
+                                  const updates: any = {};
+
+                                  if (isExam) {
+                                    updates.rowScores = { ...newData.rowScores, [histRow.id]: val };
+                                  } else {
+                                    updates.selections = { ...newData.selections, [histRow.id]: val };
+                                  }
+
+                                  if (fb !== undefined) {
+                                    let newCellFeedback = [...(newData.cellFeedback || [])];
+                                    const keyCol = isExam ? 'manual' : (val as string);
+                                    const idx = newCellFeedback.findIndex(f => f.rowId === histRow.id);
+                                    if (idx >= 0) newCellFeedback[idx] = { rowId: histRow.id, columnId: keyCol, feedback: fb };
+                                    else newCellFeedback.push({ rowId: histRow.id, columnId: keyCol, feedback: fb });
+                                    updates.cellFeedback = newCellFeedback;
+                                  }
+
+                                  if (correct !== undefined && histRow.calculationPoints) {
+                                    updates.calculationCorrect = { ...newData.calculationCorrect, [histRow.id]: correct };
+                                  }
+
+                                  updateStudentData(currentStudentName, updates);
+                                }}
+                              />
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

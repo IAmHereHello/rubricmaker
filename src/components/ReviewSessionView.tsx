@@ -42,8 +42,10 @@ export function ReviewSessionView({ rubric, className, onExit }: ReviewSessionVi
 
     const students = useMemo(() => {
         const allResults = results[rubric.id] || [];
-        if (!className) return allResults;
-        return allResults.filter(s => s.className === className);
+        if (!className) return allResults.sort((a, b) => a.studentName.localeCompare(b.studentName));
+        return allResults
+            .filter(s => s.className === className)
+            .sort((a, b) => a.studentName.localeCompare(b.studentName));
     }, [results, rubric.id, className]);
 
     // Initial load of current student into working state

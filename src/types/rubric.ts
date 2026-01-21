@@ -12,12 +12,14 @@ export interface Row {
   maxPoints?: number; // For exams: Maximum points for this question
   learningGoal?: string; // For exams: Grouping category
   description?: string; // For exams: Optional question description
+  routes?: ('orange' | 'yellow' | 'blue')[]; // Differentiation routes
 }
 
 export interface CriteriaCell {
   rowId: string;
   columnId: string;
   description: string;
+  versions?: { A: string; B: string }; // Test Versions (A/B)
 }
 
 export interface Threshold {
@@ -50,6 +52,8 @@ export interface GradedStudent {
   className?: string; // Class name for grouping
   rowScores?: { [rowId: string]: number }; // For exams: Explicit point value given per row/question
   extraConditionsMet?: { [goalName: string]: { [conditionIndex: number]: boolean } }; // For mastery exams
+  selectedRoute?: 'orange' | 'yellow' | 'blue'; // Learning Route
+  rubricVersion?: 'A' | 'B'; // Test Version
 }
 
 export type RubricType = 'assignment' | 'exam';
@@ -65,7 +69,12 @@ export interface Rubric {
   columns: Column[];
   rows: Row[];
   criteria: CriteriaCell[];
-  thresholds: Threshold[];
+  thresholds: Threshold[]; // default grading scale
+  gradingScales?: { // Grading Norms per Route
+    orange?: Threshold[];
+    yellow?: Threshold[];
+    blue?: Threshold[];
+  };
   totalPossiblePoints: number;
   scoringMode: ScoringMode;
   gradedStudents: GradedStudent[];
@@ -103,6 +112,9 @@ export interface StudentGradingData {
   generalFeedback: string;
   rowScores?: { [rowId: string]: number }; // For exams
   extraConditionsMet?: { [goalName: string]: { [conditionIndex: number]: boolean } }; // For mastery exams
+  selectedRoute?: 'orange' | 'yellow' | 'blue';
+  rubricVersion?: 'A' | 'B';
+  notMadeRows?: { [rowId: string]: boolean }; // Track "Not Made" / "N.v.t." per question
 }
 
 export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;

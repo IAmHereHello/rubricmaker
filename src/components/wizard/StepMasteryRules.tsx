@@ -153,21 +153,42 @@ export function StepMasteryRules({ onComplete, onBack }: StepMasteryRulesProps) 
 
                             {/* Extra Conditions */}
                             <div className="space-y-3">
-                                <div className="flex justify-between items-center">
+                                <div className="flex justify-between items-center mb-2">
                                     <Label className="flex items-center gap-2">
                                         <CheckCircle2 className="h-4 w-4" />
                                         Mandatory Conditions (Optional)
                                     </Label>
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => handleAddCondition(idx)}
-                                        className="text-primary hover:text-primary/80"
-                                    >
-                                        <Plus className="h-4 w-4 mr-1" />
-                                        Add Condition
-                                    </Button>
+                                    <div className="flex items-center gap-2">
+                                        {rule.extraConditions.length > 0 && (
+                                            <div className="flex items-center gap-2 bg-muted/50 px-2 py-1 rounded text-xs border">
+                                                <span className="text-muted-foreground">Require:</span>
+                                                <Input
+                                                    type="number"
+                                                    className="h-7 w-12 px-1 text-center bg-background"
+                                                    min={1}
+                                                    max={rule.extraConditions.length}
+                                                    value={rule.minConditions === undefined ? rule.extraConditions.length : rule.minConditions}
+                                                    onChange={(e) => {
+                                                        const val = parseInt(e.target.value);
+                                                        if (!isNaN(val) && val >= 1 && val <= rule.extraConditions.length) {
+                                                            handleUpdateRule(idx, { minConditions: val });
+                                                        }
+                                                    }}
+                                                />
+                                                <span className="text-muted-foreground">/ {rule.extraConditions.length}</span>
+                                            </div>
+                                        )}
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => handleAddCondition(idx)}
+                                            className="text-primary hover:text-primary/80"
+                                        >
+                                            <Plus className="h-4 w-4 mr-1" />
+                                            Add Condition
+                                        </Button>
+                                    </div>
                                 </div>
 
                                 <div className="space-y-2">

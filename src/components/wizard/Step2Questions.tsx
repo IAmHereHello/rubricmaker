@@ -36,7 +36,8 @@ export function Step2Questions({ onNext, onBack }: Step2QuestionsProps) {
             calculationPoints: 0,
             maxPoints: 1,
             learningGoal: '',
-            description: ''
+            description: '',
+            routes: ['orange', 'yellow', 'blue'] as ('orange' | 'yellow' | 'blue')[],
         });
     };
 
@@ -151,6 +152,37 @@ export function Step2Questions({ onNext, onBack }: Step2QuestionsProps) {
                                             </div>
                                         )}
 
+                                        {/* Route Selector */}
+                                        <div className="flex items-center gap-1.5 border rounded-md px-3 h-10">
+                                            <span className="text-xs font-medium text-muted-foreground mr-1">Routes:</span>
+                                            {(['orange', 'yellow', 'blue'] as const).map((color) => {
+                                                const isActive = (row.routes || ['orange', 'yellow', 'blue']).includes(color);
+                                                return (
+                                                    <button
+                                                        key={color}
+                                                        onClick={() => {
+                                                            const current = row.routes || ['orange', 'yellow', 'blue'];
+                                                            const newRoutes = current.includes(color)
+                                                                ? current.filter(r => r !== color)
+                                                                : [...current, color];
+                                                            updateRow(row.id, { routes: newRoutes });
+                                                        }}
+                                                        className={cn(
+                                                            "h-5 w-5 rounded-full border-2 transition-all",
+                                                            color === 'orange' && "border-orange-500",
+                                                            color === 'yellow' && "border-yellow-500",
+                                                            color === 'blue' && "border-blue-500",
+                                                            isActive ? (
+                                                                color === 'orange' ? "bg-orange-500" :
+                                                                    color === 'yellow' ? "bg-yellow-500" : "bg-blue-500"
+                                                            ) : "bg-transparent opacity-30 hover:opacity-60"
+                                                        )}
+                                                        title={`Toggle ${color} route`}
+                                                    />
+                                                );
+                                            })}
+                                        </div>
+
                                         {/* Bonus Toggle */}
                                         <div className="flex items-center gap-2 border rounded-md px-3 h-10 ml-auto">
                                             <Switch
@@ -200,6 +232,6 @@ export function Step2Questions({ onNext, onBack }: Step2QuestionsProps) {
                     </p>
                 )}
             </CardContent>
-        </Card>
+        </Card >
     );
 }

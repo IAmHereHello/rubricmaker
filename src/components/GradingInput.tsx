@@ -19,6 +19,7 @@ interface GradingInputProps {
     calculationCorrect?: boolean;
     onCalculationChange?: (correct: boolean) => void;
     readOnly?: boolean;
+    version?: 'A' | 'B';
 }
 
 export function GradingInput({
@@ -31,12 +32,18 @@ export function GradingInput({
     onFeedbackChange,
     calculationCorrect = true,
     onCalculationChange,
-    readOnly = false
+    readOnly = false,
+    version = 'A'
 }: GradingInputProps) {
 
     // Helper to get criteria text
     const getCriteriaValue = (rowId: string, columnId: string) => {
-        return rubric.criteria.find((c) => c.rowId === rowId && c.columnId === columnId)?.description || '';
+        const cell = rubric.criteria.find((c) => c.rowId === rowId && c.columnId === columnId);
+        if (!cell) return '';
+        if (version && cell.versions?.[version as 'A' | 'B']) {
+            return cell.versions[version as 'A' | 'B'] || cell.description;
+        }
+        return cell.description || '';
     };
 
     if (isExam) {
