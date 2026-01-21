@@ -6,19 +6,29 @@ import { useRubricStore } from '@/hooks/useRubricStore';
 import { ImportExportSection } from '@/components/ImportExportSection';
 
 import { GradingModeModal } from '@/components/GradingModeModal';
-import { Plus, ClipboardList, Trash2, GraduationCap, Edit, Users } from 'lucide-react';
+import { Plus, ClipboardList, Trash2, GraduationCap, Edit, Users, FileText, ClipboardCheck, Eye, Copy, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import { Rubric, RubricType } from '@/types/rubric';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { FileText, ClipboardCheck } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 
 export function RubricList() {
   const navigate = useNavigate();
-  const { rubrics, deleteRubric, setCurrentRubric } = useRubricStore();
+  const { rubrics, deleteRubric, setCurrentRubric, duplicateRubric } = useRubricStore();
   const [showGradingModal, setShowGradingModal] = useState(false);
   const [showTypeModal, setShowTypeModal] = useState(false);
   const [selectedRubricId, setSelectedRubricId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const handleCreateClick = () => {
     setShowTypeModal(true);
@@ -44,6 +54,15 @@ export function RubricList() {
     navigate('/builder');
   };
 
+  const handleView = (rubric: Rubric) => {
+    setCurrentRubric(rubric);
+    navigate('/builder', { state: { readOnly: true } });
+  };
+
+  const handleDuplicate = async (rubric: Rubric) => {
+    await duplicateRubric(rubric);
+  };
+
   const handleGradeClick = (rubricId: string) => {
     setSelectedRubricId(rubricId);
     setShowGradingModal(true);
@@ -51,11 +70,19 @@ export function RubricList() {
 
   const handleGradingModeSelect = (mode: 'vertical' | 'horizontal', studentNames?: string[], className?: string) => {
     setShowGradingModal(false);
-    if (mode === 'vertical') {
-      navigate(`/grade/${selectedRubricId}`);
-    } else {
-      // Navigate with student names and class name in state
-      navigate(`/grade/${selectedRubricId}/horizontal`, { state: { studentNames, className } });
+    if (selectedRubricId) {
+      if (mode === 'vertical') {
+        navigate(`/grade/${selectedRubricId}`);
+      } else {
+        navigate(`/grade/${selectedRubricId}/horizontal`, { state: { studentNames, className } });
+      }
+    }
+  };
+
+  const confirmDelete = () => {
+    if (deleteId) {
+      deleteRubric(deleteId);
+      setDeleteId(null);
     }
   };
 
@@ -99,12 +126,12 @@ export function RubricList() {
             {rubrics.map((rubric) => (
               <Card
                 key={rubric.id}
-                className="shadow-soft hover:shadow-soft-lg transition-shadow group"
+                className="shadow-soft hover:shadow-soft-lg transition-shadow group flex flex-col"
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
-                      <CardTitle className="text-lg truncate">{rubric.name}</CardTitle>
+                      <CardTitle className="text-lg truncate" title={rubric.name}>{rubric.name}</CardTitle>
                       <CardDescription className="mt-1">
                         {rubric.rows.length} goals · {rubric.columns.length} levels
                       </CardDescription>
@@ -120,17 +147,30 @@ export function RubricList() {
                         )}
                       </div>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => deleteRubric(rubric.id)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+
+                    <div className="flex gap-1 -mr-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDuplicate(rubric)}
+                        title="Duplicate"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setDeleteId(rubric.id)}
+                        title="Delete"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="flex-1 flex flex-col justify-end">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
                     <span>{rubric.totalPossiblePoints} total points</span>
                     <span>·</span>
@@ -142,7 +182,16 @@ export function RubricList() {
                       <span>{rubric.gradedStudents.length} students graded</span>
                     </div>
                   )}
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 mt-auto">
+                    <Button
+                      variant="outline"
+                      className="flex-1 gap-2"
+                      onClick={() => handleView(rubric)}
+                      title="View Read-Only"
+                    >
+                      <Eye className="h-4 w-4" />
+                      View
+                    </Button>
                     <Button
                       variant="outline"
                       className="flex-1 gap-2"
@@ -164,8 +213,26 @@ export function RubricList() {
             ))}
           </div>
 
-
-        </div>
+          <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-destructive" />
+                  Weet je het zeker?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Dit kan niet ongedaan worden gemaakt. De rubric en alle geassocieerde cijfers worden verwijderd.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Annuleren</AlertDialogCancel>
+                <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90">
+                  Verwijderen
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div >
       )}
 
       {/* Grading Mode Selection Modal */}

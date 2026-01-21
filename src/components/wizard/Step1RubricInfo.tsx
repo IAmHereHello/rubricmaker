@@ -9,9 +9,10 @@ import { useRubricStore } from '@/hooks/useRubricStore';
 interface Step1RubricInfoProps {
   onNext: () => void;
   onBack?: () => void;
+  isReadOnly?: boolean;
 }
 
-export function Step1RubricInfo({ onNext, onBack }: Step1RubricInfoProps) {
+export function Step1RubricInfo({ onNext, onBack, isReadOnly }: Step1RubricInfoProps) {
   const { currentRubric, updateCurrentRubric } = useRubricStore();
   const [touched, setTouched] = useState(false);
 
@@ -36,9 +37,9 @@ export function Step1RubricInfo({ onNext, onBack }: Step1RubricInfoProps) {
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
           <FileText className="h-7 w-7 text-primary" />
         </div>
-        <CardTitle className="text-2xl">Create New Rubric</CardTitle>
+        <CardTitle className="text-2xl">{isReadOnly ? 'Rubric Details' : 'Create New Rubric'}</CardTitle>
         <CardDescription className="text-base">
-          Give your rubric a descriptive name to get started
+          {isReadOnly ? 'View rubric name and details' : 'Give your rubric a descriptive name to get started'}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -53,14 +54,15 @@ export function Step1RubricInfo({ onNext, onBack }: Step1RubricInfoProps) {
               value={currentRubric?.name || ''}
               onChange={(e) => updateCurrentRubric({ name: e.target.value })}
               onBlur={handleBlur}
+              disabled={isReadOnly}
               className={`h-12 text-base ${showError ? 'border-destructive focus-visible:ring-destructive' : ''}`}
-              autoFocus
+              autoFocus={!isReadOnly}
             />
             {showError && (
               <p className="text-sm text-destructive">Please name your rubric</p>
             )}
           </div>
-          
+
           <div className="flex gap-3">
             {onBack && (
               <Button

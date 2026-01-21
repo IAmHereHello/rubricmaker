@@ -16,6 +16,7 @@ interface RubricStore {
   deleteRubric: (id: string) => Promise<void>;
   getRubricById: (id: string) => Rubric | undefined;
   importRubric: (rubricData: Partial<Rubric>) => void;
+  duplicateRubric: (rubric: Rubric) => Promise<void>;
 
   // Column actions
   addColumn: (column: Column) => void;
@@ -324,9 +325,57 @@ export const useRubricStore = create<RubricStore>()(
         gradedStudents: [],
         createdAt: now,
         updatedAt: now,
+        gradingMethod: rubricData.gradingMethod,
+        learningGoalRules: rubricData.learningGoalRules,
+        masteryThresholds: rubricData.masteryThresholds,
       };
 
       set({ rubrics: [...rubrics, newRubric] });
+    },
+
+    duplicateRubric: async (originalRubric) => {
+      const { saveRubric } = get();
+
+      // Maps to track ID changes
+      const rowMap = new Map<string, string>();
+      const colMap = new Map<string, string>();
+
+      // Regenerate Column IDs
+      const newColumns = originalRubric.columns.map(col => {
+        const newId = generateId();
+        colMap.set(col.id, newId);
+        return { ...col, id: newId };
+      });
+
+      // Regenerate Row IDs
+      const newRows = originalRubric.rows.map(row => {
+        const newId = generateId();
+        rowMap.set(row.id, newId);
+        return { ...row, id: newId };
+      });
+
+      // Update Criteria with new IDs
+      const newCriteria = (originalRubric.criteria || []).map(crit => ({
+        ...crit,
+        rowId: rowMap.get(crit.rowId) || crit.rowId,
+        columnId: colMap.get(crit.columnId) || crit.columnId,
+      }));
+
+      // Clone object
+      const newRubric: Rubric = {
+        ...originalRubric,
+        id: generateId(), // New Rubric ID
+        name: `${originalRubric.name} (Kopie)`,
+        columns: newColumns,
+        rows: newRows,
+        criteria: newCriteria,
+        gradedStudents: [], // Do NOT copy students
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      // Save to Supabase and Store
+      await saveRubric(newRubric);
     },
 
     addColumn: (column) => set((state) => ({

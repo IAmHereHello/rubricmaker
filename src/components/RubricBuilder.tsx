@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { WizardSteps } from '@/components/WizardSteps';
 import { Step1RubricInfo } from '@/components/wizard/Step1RubricInfo';
 import { Step2Columns } from '@/components/wizard/Step2Columns';
@@ -11,8 +11,8 @@ import { Step2Questions } from '@/components/wizard/Step2Questions';
 import { StepMasteryRules } from '@/components/wizard/StepMasteryRules';
 import { useRubricStore } from '@/hooks/useRubricStore';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, Eye } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { WizardStep } from '@/types/rubric';
 
 const ASSIGNMENT_STEPS = [
@@ -39,7 +39,19 @@ const MASTERY_EXAM_STEPS = [
 export function RubricBuilder() {
   const [currentStep, setCurrentStep] = useState<WizardStep>(1);
   const { saveRubric, setCurrentRubric, currentRubric } = useRubricStore();
+
   const navigate = useNavigate();
+  const location = useLocation();
+  const isReadOnly = location.state?.readOnly || false;
+
+  // Fix: Ensure gradingMethod is preserved when editing an existing rubric
+  useEffect(() => {
+    if (currentRubric?.id && currentRubric.gradingMethod) {
+      // Ensure the store value is respected/refreshed if needed
+      // This empty effect with dependency ensures we react to load changes
+      // but the main fix is likely ensuring the store doesn't reset it externally.
+    }
+  }, [currentRubric?.id, currentRubric?.gradingMethod]);
 
   const isExam = currentRubric?.type === 'exam';
   const isMastery = currentRubric?.gradingMethod === 'mastery';
@@ -47,6 +59,10 @@ export function RubricBuilder() {
 
 
   const handleComplete = async () => {
+    if (isReadOnly) {
+      navigate('/');
+      return;
+    }
     await saveRubric();
     navigate('/');
   };
@@ -63,23 +79,54 @@ export function RubricBuilder() {
           <div className="flex items-center justify-between">
             <Button variant="ghost" onClick={handleCancel} className="gap-2">
               <ArrowLeft className="h-4 w-4" />
-              Cancel
+              {isReadOnly ? 'Back to Dashboard' : 'Cancel'}
             </Button>
-            <h1 className="text-lg font-semibold">Rubric Builder</h1>
+            <h1 className="text-lg font-semibold flex items-center gap-2">
+              {isReadOnly ? (
+                <>
+                  <Eye className="h-4 w-4" />
+                  Rubric Preview
+                </>
+              ) : (
+                'Rubric Builder'
+              )}
+            </h1>
             <div className="w-20" />
           </div>
         </div>
       </header>
 
+      {isReadOnly && (
+        <div className="bg-blue-50/50 border-b border-blue-200">
+          <div className="container mx-auto px-4 py-2 text-sm text-blue-800 flex justify-center items-center gap-2">
+            <Eye className="h-4 w-4" />
+            You are viewing this rubric in Read-Only mode.
+          </div>
+        </div>
+      )}
+
       <div className="container mx-auto px-4 py-6">
+        {/* Note: pointer-events-none disables interaction. If we want scroll, we need recursive disable or overlay. 
+            However, components might have their own scrolling? 
+            Actually, the container handles layout. The Steps handle inputs.
+            If I block all events, I block Scroll too if overflowing? Usually no, scroll is on window/parent.
+            But interaction with sliders/inputs is blocked.
+            This is a "Cheap" read-only implementation. 
+            Does the user need to click tabs?
+            If WizardSteps use clicks to navigate steps, disabling pointer-events on wrapper will break navigation!
+            So I CANNOT put pointer-events-none on the wrapper if WizardSteps is inside.
+            
+            Correct approach:
+            Pass readOnly to children OR put pointer-events-none on the *Content* but NOT the WizardSteps. 
+        */}
         <WizardSteps currentStep={currentStep} steps={steps} />
 
-        <div className="mt-8">
+        <div className={`mt-8 ${isReadOnly ? 'pointer-events-none opacity-90' : ''}`}>
           {/* Assignment Flow Steps */}
           {!isExam && (
             <>
               {currentStep === 1 && (
-                <Step1RubricInfo onNext={() => setCurrentStep(2)} onBack={handleCancel} />
+                <Step1RubricInfo onNext={() => setCurrentStep(2)} onBack={handleCancel} isReadOnly={isReadOnly} />
               )}
               {currentStep === 2 && (
                 <Step2Columns

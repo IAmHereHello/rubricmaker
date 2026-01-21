@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
-import { ArrowLeft, ArrowRight, BookOpen, Plus, Trash2, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpen, Plus, Trash2, CheckCircle2, Target } from 'lucide-react';
 import { useRubricStore } from '@/hooks/useRubricStore';
 import { LearningGoalRule } from '@/types/rubric';
 
@@ -18,6 +18,15 @@ interface StepMasteryRulesProps {
 export function StepMasteryRules({ onComplete, onBack }: StepMasteryRulesProps) {
     const { currentRubric, updateCurrentRubric } = useRubricStore();
     const [rules, setRules] = useState<LearningGoalRule[]>([]);
+    const [masteryThresholds, setMasteryThresholds] = useState<{
+        orange: { beheerst: number; expert: number };
+        yellow: { beheerst: number; expert: number };
+        blue: { beheerst: number; expert: number };
+    }>({
+        orange: { beheerst: 0, expert: 0 },
+        yellow: { beheerst: 0, expert: 0 },
+        blue: { beheerst: 0, expert: 0 }
+    });
 
     // Derived state
     const rows = currentRubric?.rows || [];
@@ -54,7 +63,15 @@ export function StepMasteryRules({ onComplete, onBack }: StepMasteryRulesProps) 
         });
 
         setRules(newRules);
-    }, [JSON.stringify(uniqueGoals), currentRubric?.learningGoalRules]);
+
+        // Initialize Mastery Thresholds
+        if (currentRubric.masteryThresholds) {
+            setMasteryThresholds(currentRubric.masteryThresholds);
+        } else if (currentRubric.rows) {
+            // Smart default? Optional.
+            // We start with 0.
+        }
+    }, [JSON.stringify(uniqueGoals), currentRubric?.learningGoalRules, currentRubric?.masteryThresholds]);
     // Need to be careful with dependency array here to avoid infinite loops if we update store
 
     const handleUpdateRule = (index: number, updates: Partial<LearningGoalRule>) => {
@@ -86,8 +103,22 @@ export function StepMasteryRules({ onComplete, onBack }: StepMasteryRulesProps) 
     };
 
     const handleSave = () => {
-        updateCurrentRubric({ learningGoalRules: rules });
+        updateCurrentRubric({
+            learningGoalRules: rules,
+            masteryThresholds: masteryThresholds
+        });
         onComplete();
+    };
+
+    const handleThresholdChange = (route: 'orange' | 'yellow' | 'blue', level: 'beheerst' | 'expert', value: string) => {
+        const val = parseInt(value) || 0;
+        setMasteryThresholds(prev => ({
+            ...prev,
+            [route]: {
+                ...prev[route],
+                [level]: val
+            }
+        }));
     };
 
     return (
@@ -224,6 +255,65 @@ export function StepMasteryRules({ onComplete, onBack }: StepMasteryRulesProps) 
                 })}
 
 
+
+
+                {/* Route Normering / Thresholds Section */}
+                <div className="border-t pt-8 mt-8">
+                    <CardHeader className="px-0 pt-0">
+                        <CardTitle className="text-xl flex items-center gap-2">
+                            <Target className="h-6 w-6 text-primary" />
+                            Normering per Leerroute
+                        </CardTitle>
+                        <CardDescription>
+                            Bepaal hoeveel 'vinkjes' (punten) nodig zijn voor een niveau.
+                        </CardDescription>
+                    </CardHeader>
+
+                    <div className="bg-card border rounded-lg overflow-hidden">
+                        <div className="grid grid-cols-3 bg-muted/50 p-4 font-bold border-b text-sm">
+                            <div>Leerroute</div>
+                            <div className="text-center">Min. voor "Beheerst" (6.0)</div>
+                            <div className="text-center">Min. voor "Expert" (8.0+)</div>
+                        </div>
+                        {(['orange', 'yellow', 'blue'] as const).map(route => {
+                            // Calculate total possible based on route?
+                            // Currently routes are on rows.
+                            const routeTotal = rows.filter(r => r.routes?.includes(route)).length;
+                            const label = route === 'orange' ? 'Oranje (Basis)' : route === 'yellow' ? 'Geel (Gevorderd)' : 'Blauw (Expert)';
+                            const colorClass = route === 'orange' ? 'text-orange-600' : route === 'yellow' ? 'text-yellow-600' : 'text-blue-600';
+                            const bgClass = route === 'orange' ? 'bg-orange-50' : route === 'yellow' ? 'bg-yellow-50' : 'bg-blue-50';
+
+                            return (
+                                <div key={route} className={`grid grid-cols-3 p-4 items-center border-b last:border-0 ${bgClass}`}>
+                                    <div className={`font-semibold ${colorClass} flex flex-col`}>
+                                        <span>{label}</span>
+                                        <span className="text-xs text-muted-foreground font-normal">Totaal beschikbaar: {routeTotal}</span>
+                                    </div>
+                                    <div className="px-4">
+                                        <Input
+                                            type="number"
+                                            min={0}
+                                            max={routeTotal}
+                                            className="text-center"
+                                            value={masteryThresholds[route]?.beheerst || ''}
+                                            onChange={(e) => handleThresholdChange(route, 'beheerst', e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="px-4">
+                                        <Input
+                                            type="number"
+                                            min={0}
+                                            max={routeTotal}
+                                            className="text-center"
+                                            value={masteryThresholds[route]?.expert || ''}
+                                            onChange={(e) => handleThresholdChange(route, 'expert', e.target.value)}
+                                        />
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
                 <div className="flex gap-3 pt-6 border-t mt-8">
                     <Button
                         type="button"

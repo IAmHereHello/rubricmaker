@@ -75,6 +75,11 @@ export interface Rubric {
     yellow?: Threshold[];
     blue?: Threshold[];
   };
+  masteryThresholds?: {
+    orange: { beheerst: number; expert: number };
+    yellow: { beheerst: number; expert: number };
+    blue: { beheerst: number; expert: number };
+  };
   totalPossiblePoints: number;
   scoringMode: ScoringMode;
   gradedStudents: GradedStudent[];
