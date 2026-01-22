@@ -20,8 +20,8 @@ export const generatePdf = (rubric: Rubric, students: GradedStudent[], filename?
         doc.text(rubric.name, pageWidth / 2, 20, { align: 'center' });
 
         doc.setFontSize(14);
-        doc.text(`Student: ${student.studentName}`, 14, 35);
-        doc.text(`Date: ${format(new Date(student.gradedAt), 'MMM d, yyyy')}`, 14, 42);
+        doc.text(`Leerling: ${student.studentName}`, 14, 35);
+        doc.text(`Datum: ${format(new Date(student.gradedAt), 'dd-MM-yyyy')}`, 14, 42);
 
         const isMastery = rubric.gradingMethod === 'mastery';
         const isExam = rubric.type === 'exam';
@@ -31,7 +31,7 @@ export const generatePdf = (rubric: Rubric, students: GradedStudent[], filename?
             // Mastery Header - No Score
             doc.setFontSize(16);
             doc.setTextColor(0, 0, 0);
-            doc.text(`Mastery Report`, pageWidth - 14, 35, { align: 'right' });
+            doc.text(`Beheersingsrapport`, pageWidth - 14, 35, { align: 'right' });
 
             // Group by Learning Goal (Sorted by First Occurrence)
             const goals: string[] = [];
@@ -67,9 +67,9 @@ export const generatePdf = (rubric: Rubric, students: GradedStudent[], filename?
                 tableBody.push([{ content: `${goalName}`, colSpan: 2, styles: { fillColor: [240, 240, 240], fontStyle: 'bold', fontSize: 11 } }]);
 
                 // Show Status and Condition Progress if applicable
-                let statusString = `Status: ${statusText}`;
+                let statusString = `Beoordeling: ${statusText}`;
                 if (rule && rule.extraConditions.length > 0) {
-                    statusString += ` (Conditions: ${conditionsMetCount}/${requiredConditions})`;
+                    statusString += ` (Voorwaarden: ${conditionsMetCount}/${requiredConditions})`;
                 }
 
                 tableBody.push([{ content: statusString, colSpan: 2, styles: { textColor: statusColor, fontStyle: 'bold' } }]);
@@ -85,7 +85,7 @@ export const generatePdf = (rubric: Rubric, students: GradedStudent[], filename?
                 if (rule?.extraConditions) {
                     rule.extraConditions.forEach((cond, idx) => {
                         const met = conditionsMet[idx];
-                        questionLines.push(`${met ? '(V)' : '(X)'} [Condition] ${cond}`);
+                        questionLines.push(`${met ? '(V)' : '(X)'} [Voorwaarde] ${cond}`);
                     });
                 }
 
@@ -109,9 +109,9 @@ export const generatePdf = (rubric: Rubric, students: GradedStudent[], filename?
             // Standard Scoring (Exam or Assignment)
             doc.setFontSize(16);
             doc.setTextColor(0, 0, 0);
-            doc.text(`Total Score: ${student.totalScore} / ${rubric.totalPossiblePoints}`, pageWidth - 14, 35, { align: 'right' });
+            doc.text(`Punten: ${student.totalScore} / ${rubric.totalPossiblePoints}`, pageWidth - 14, 35, { align: 'right' });
             doc.setFontSize(14);
-            doc.text(`Status: ${student.statusLabel}`, pageWidth - 14, 42, { align: 'right' });
+            doc.text(`Beoordeling: ${student.statusLabel}`, pageWidth - 14, 42, { align: 'right' });
 
             if (isExam) {
                 // Group by Learning Goal
@@ -133,7 +133,7 @@ export const generatePdf = (rubric: Rubric, students: GradedStudent[], filename?
                         let criteriaText = row.description || '';
                         if (feedback) criteriaText += `\n\nFeedback: ${feedback}`;
                         const warning = row.calculationPoints && row.calculationPoints > 0 && student.calculationCorrect?.[row.id] === false;
-                        if (warning) criteriaText += `\n\n!!WARNING!! Berekening mist: -${row.calculationPoints}`;
+                        if (warning) criteriaText += `\n\n!!LET OP!! Berekening mist: -${row.calculationPoints}`;
 
                         tableBody.push([
                             row.name,
@@ -160,7 +160,7 @@ export const generatePdf = (rubric: Rubric, students: GradedStudent[], filename?
                     let criteriaText = selectedColumn ? `${selectedColumn.name}\n${criteria}` : 'Not graded';
 
                     if (showWarning) {
-                        criteriaText += `\n\n!!WARNING!! Berekening mist: -${row.calculationPoints}`;
+                        criteriaText += `\n\n!!LET OP!! Berekening mist: -${row.calculationPoints}`;
                     }
 
                     if (feedback) {
@@ -179,7 +179,7 @@ export const generatePdf = (rubric: Rubric, students: GradedStudent[], filename?
         // Generate Table
         autoTable(doc, {
             startY: 50,
-            head: isMastery ? [['Category', 'Details']] : [['Goal', 'Assessment', 'Points']],
+            head: isMastery ? [['Categorie', 'Details']] : [['🎯 Leerdoel', 'Juiste antwoord', 'Punten']],
             body: tableBody,
             columnStyles: isMastery ? {
                 0: { cellWidth: 50 },
@@ -194,8 +194,8 @@ export const generatePdf = (rubric: Rubric, students: GradedStudent[], filename?
                 if (data.section === 'body' && data.column.index === 1) {
                     const text = data.cell.raw as string;
                     // Warning specific logic (existing)
-                    if (typeof text === 'string' && text.includes('!!WARNING!!')) {
-                        data.cell.text = [text.replace('!!WARNING!! ', '')];
+                    if (typeof text === 'string' && text.includes('!!LET OP!!')) {
+                        data.cell.text = [text.replace('!!LET OP!! ', '')];
                         data.cell.styles.textColor = [220, 38, 38];
                     }
                 }
