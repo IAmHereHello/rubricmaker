@@ -26,7 +26,8 @@ interface Step2QuestionsProps {
 export function Step2Questions({ onNext, onBack }: Step2QuestionsProps) {
     const { currentRubric, addRow, updateRow, removeRow } = useRubricStore();
 
-    const rows = currentRubric?.rows || [];
+    // Sort rows by position to ensure visual order matches logical order
+    const rows = (currentRubric?.rows || []).sort((a, b) => (a.position || 0) - (b.position || 0));
 
     const handleAddQuestion = () => {
         addRow({
@@ -38,6 +39,7 @@ export function Step2Questions({ onNext, onBack }: Step2QuestionsProps) {
             learningGoal: '',
             description: '',
             routes: ['orange', 'yellow', 'blue'] as ('orange' | 'yellow' | 'blue')[],
+            position: rows.length, // Ensure new items go to the end
         });
     };
 

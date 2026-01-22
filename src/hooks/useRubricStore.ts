@@ -87,7 +87,9 @@ export const useRubricStore = create<RubricStore>()(
           name: row.title,
           type: row.type,
           // Fix for Mastery Data Loss: Map rubric_items to rows/rubricItems if present
-          rows: (row.rubric_items && row.rubric_items.length > 0) ? row.rubric_items : row.data.rows,
+          rows: (row.rubric_items && row.rubric_items.length > 0)
+            ? row.rubric_items.sort((a: any, b: any) => (a.position || 0) - (b.position || 0))
+            : row.data.rows,
         }));
 
         // Handle legacy/malformed data if necessary, but assuming data column has the rubric structure
@@ -169,6 +171,17 @@ export const useRubricStore = create<RubricStore>()(
           title: rubricToSave.name,
           description: '',
           type: rubricToSave.type,
+          // Ensure we map separate rubric_items for the relational table
+          // This is critical for Mastery Rubrics checklist items
+          rubric_items: rubricToSave.rows.map((r, index) => ({
+            title: r.name,
+            description: r.description || '',
+            position: r.position !== undefined ? r.position : index,
+            learning_goal: r.learningGoal || null,
+            max_points: r.maxPoints || 0,
+            is_bonus: r.isBonus || false,
+            routes: r.routes || []
+          })),
           data: rubricToSave
         };
 

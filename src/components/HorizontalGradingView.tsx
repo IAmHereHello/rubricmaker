@@ -158,12 +158,18 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
     if (!currentStudentName || !currentRow) return;
 
     const currentNotMade = currentStudentData.notMadeRows?.[currentRow.id] || false;
-    const newNotMade = { ...(currentStudentData.notMadeRows || {}), [currentRow.id]: !currentNotMade };
+    const newNotMadeValue = !currentNotMade;
 
-    updateStudentData(currentStudentName, { notMadeRows: newNotMade });
+    const newNotMadeMap = { ...(currentStudentData.notMadeRows || {}), [currentRow.id]: newNotMadeValue };
 
-    // Clear score if setting to not made? Or just keep it but ignore in calc?
-    // Requirement says "Treats as 0 points". Logic already handled in calc.
+    if (newNotMadeValue) {
+      // Auto-advance logic:
+      // Pass the update explicitly to handleNextStudent so it saves AND moves forward
+      handleNextStudent({ notMadeRows: newNotMadeMap });
+    } else {
+      // Just update local state (user stays to enter score)
+      updateStudentData(currentStudentName, { notMadeRows: newNotMadeMap });
+    }
   };
   // Manual score for exams
   const [currentManualScore, setCurrentManualScore] = useState<number | undefined>(undefined);
@@ -553,8 +559,23 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
     setSelectedColumn(columnId);
   };
 
-  const handleNextStudent = () => {
-    if (!currentStudentName || (isExam ? currentManualScore === undefined : !selectedColumn)) return;
+  const handleNextStudent = (explicitUpdates?: Partial<StudentGradingData>) => {
+    // Check validation based on FUTURE state (merging current with explicit updates)
+    const nextNotMade = explicitUpdates?.notMadeRows?.[currentRow.id]
+      ?? currentStudentData.notMadeRows?.[currentRow.id];
+
+    // Allowed to proceed if: 
+    // 1. We have a student name
+    // 2. AND (We have a valid score OR We are skipping this row/not-made)
+    const hasValidExamScore = isExam && currentManualScore !== undefined;
+    const hasValidColumn = !isExam && selectedColumn;
+
+    // Logic: If "Not Made" is true, we don't need a score.
+    const canProceed = currentStudentName && (
+      nextNotMade || hasValidExamScore || hasValidColumn
+    );
+
+    if (!canProceed) return;
 
     const studentData = getStudentData(currentStudentName);
 
@@ -597,7 +618,8 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
       rowScores: newRowScores,
       cellFeedback: newCellFeedback,
       generalFeedback: studentData.generalFeedback || generalFeedback,
-      calculationCorrect: newCalculationCorrect
+      calculationCorrect: newCalculationCorrect,
+      ...explicitUpdates // Merge any explicit updates (like notMadeRows)
     };
 
     updateStudentData(currentStudentName, updatedStudentDataValues);

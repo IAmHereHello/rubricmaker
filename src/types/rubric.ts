@@ -13,6 +13,7 @@ export interface Row {
   learningGoal?: string; // For exams: Grouping category
   description?: string; // For exams: Optional question description
   routes?: ('orange' | 'yellow' | 'blue')[]; // Differentiation routes
+  position?: number; // Sorting order
 }
 
 export interface CriteriaCell {

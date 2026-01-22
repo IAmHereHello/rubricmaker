@@ -37,7 +37,12 @@ export function StepMasteryRules({ onComplete, onBack }: StepMasteryRulesProps) 
         return acc;
     }, {} as Record<string, number>);
 
-    const uniqueGoals = Object.keys(goalCounts).sort();
+    // Sort uniqueGoals by their appearance order in the rows list
+    const uniqueGoals = Object.keys(goalCounts).sort((a, b) => {
+        const indexA = rows.findIndex(r => (r.learningGoal?.trim() || 'General') === a);
+        const indexB = rows.findIndex(r => (r.learningGoal?.trim() || 'General') === b);
+        return indexA - indexB;
+    });
 
     // Initialize rules on mount or when goals change
     useEffect(() => {
