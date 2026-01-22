@@ -152,67 +152,74 @@ export function Step5Criteria({ onNext, onBack }: Step5CriteriaProps) {
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="flex flex-col gap-6">
           {/* Grid Preview - with horizontal scrolling */}
           <div className="space-y-3">
-            <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">
-              Rubric Grid
+            <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+              <div className="h-1 w-1 rounded-full bg-primary" />
+              Rubric Grid Preview
             </h3>
-            <ScrollArea className="h-[400px] rounded-lg border">
+            <ScrollArea className="w-full rounded-lg border bg-muted/20">
               <div className="min-w-max p-4">
                 <table className="w-full border-collapse">
                   <thead>
                     <tr>
-                      <th className="sticky top-0 left-0 z-30 bg-card p-3 text-left text-sm font-semibold border-b min-w-[140px] shadow-[0_1px_2px_rgba(0,0,0,0.1)]">
+                      <th className="sticky top-0 left-0 z-30 bg-card p-4 text-left text-sm font-bold border-b min-w-[200px] shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
                         Learning Goal
                       </th>
                       {columns.map((col) => (
-                        <th key={col.id} className="sticky top-0 z-20 bg-card p-3 text-center text-sm font-semibold border-b min-w-[120px] shadow-[0_1px_2px_rgba(0,0,0,0.1)]">
-                          {col.name}
-                          <span className="block text-xs font-normal text-muted-foreground">
-                            {col.points} pts
-                          </span>
+                        <th key={col.id} className="sticky top-0 z-20 bg-card p-4 text-center text-sm font-semibold border-b min-w-[180px] border-l">
+                          <div className="flex flex-col gap-1">
+                            <span className="text-foreground">{col.name}</span>
+                            <span className="text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full w-fit mx-auto">
+                              {col.points} pts
+                            </span>
+                          </div>
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {rows.map((row) => (
-                      <tr key={row.id}>
+                      <tr key={row.id} className="hover:bg-muted/50 transition-colors">
                         <td className={cn(
-                          "sticky left-0 z-10 p-3 text-sm font-medium border-b min-w-[140px]",
-                          row.isBonus ? "bg-amber-50 dark:bg-amber-950/20" : "bg-card"
+                          "sticky left-0 z-10 p-4 text-sm font-medium border-b min-w-[200px] border-r bg-card shadow-[2px_0_5px_rgba(0,0,0,0.05)]",
+                          row.isBonus ? "bg-amber-50/50 dark:bg-amber-950/20" : ""
                         )}>
                           <div className="flex items-center gap-2">
-                            {row.isBonus && <Star className="h-3 w-3 text-amber-500" />}
-                            <span className="truncate">{row.name}</span>
+                            {row.isBonus && <Star className="h-4 w-4 text-amber-500 fill-amber-500" />}
+                            <span className="line-clamp-2">{row.name}</span>
                           </div>
                         </td>
                         {columns.map((col) => {
-                          const hasContent = getCriteriaValue(row.id, col.id).trim();
+                          const description = getCriteriaValue(row.id, col.id);
+                          const hasContent = description.trim().length > 0;
                           const isSelected = selectedCell?.rowId === row.id && selectedCell?.columnId === col.id;
 
                           return (
-                            <td key={col.id} className="border-b p-1">
-                              <button
+                            <td key={col.id} className="border-b border-l p-2 align-top">
+                              <div
                                 onClick={() => setSelectedCell({ rowId: row.id, columnId: col.id })}
                                 className={cn(
-                                  "w-full h-16 rounded-md border-2 p-2 text-xs transition-all",
-                                  "grid-cell-hover",
-                                  isSelected && "grid-cell-selected border-primary ring-2 ring-primary/20",
-                                  !isSelected && hasContent && "border-status-expert/30 bg-status-expert-bg",
-                                  !isSelected && !hasContent && "border-dashed border-muted-foreground/30"
+                                  "w-full h-24 rounded-lg border-2 p-3 text-sm transition-all cursor-pointer relative group overflow-hidden",
+                                  "hover:border-primary/50 hover:shadow-sm",
+                                  isSelected
+                                    ? "border-primary bg-primary/5 ring-4 ring-primary/10 z-10"
+                                    : "border-transparent bg-card",
+                                  !hasContent && !isSelected && "bg-muted/30 border-dashed border-muted-foreground/20 hover:border-muted-foreground/40"
                                 )}
                               >
                                 {hasContent ? (
-                                  <span className="flex items-center justify-center gap-1 text-status-expert">
-                                    <Check className="h-3 w-3" />
-                                    <span className="truncate">Filled</span>
-                                  </span>
+                                  <p className="text-xs text-muted-foreground line-clamp-4 leading-relaxed">
+                                    {description}
+                                  </p>
                                 ) : (
-                                  <span className="text-muted-foreground/60">Click to edit</span>
+                                  <div className="h-full flex flex-col items-center justify-center text-muted-foreground/40 group-hover:text-muted-foreground/60 transition-colors">
+                                    <Edit3 className="h-5 w-5 mb-1" />
+                                    <span className="text-[10px] font-medium uppercase tracking-wider">Empty</span>
+                                  </div>
                                 )}
-                              </button>
+                              </div>
                             </td>
                           );
                         })}
@@ -221,99 +228,94 @@ export function Step5Criteria({ onNext, onBack }: Step5CriteriaProps) {
                   </tbody>
                 </table>
               </div>
+              <div className="sticky bottom-0 left-0 right-0 h-1 bg-gradient-to-t from-black/5 to-transparent pointer-events-none" />
             </ScrollArea>
           </div>
 
-          {/* Editor Panel */}
-          <div className="space-y-3">
-            <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">
-              Criteria Editor
-            </h3>
-            <div className="rounded-lg border bg-card p-4 h-[400px] flex flex-col">
-              {selectedCell ? (
-                <>
-                  <div className={cn(
-                    "mb-4 rounded-lg p-3",
-                    selectedRow?.isBonus ? "bg-amber-100/50 dark:bg-amber-900/30" : "bg-primary/10"
-                  )}>
-                    <p className={cn(
-                      "text-sm font-medium",
-                      selectedRow?.isBonus ? "text-amber-700 dark:text-amber-300" : "text-primary"
-                    )}>
-                      {selectedRow?.isBonus && <Star className="h-3 w-3 inline mr-1" />}
-                      Editing: <span className="font-bold">{selectedRow?.name}</span>
-                    </p>
-                    <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <ChevronRight className="h-3 w-3" />
-                      {selectedColumn?.name} ({selectedColumn?.points} pts)
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-between mb-3 px-1">
-                    <Label htmlFor="ab-mode" className="text-xs font-medium text-muted-foreground flex items-center gap-2 cursor-pointer">
-                      <Split className="h-3 w-3" />
-                      Enable A/B Test Versions
-                    </Label>
-                    <Switch
-                      id="ab-mode"
-                      checked={isABEnabled}
-                      onCheckedChange={toggleABMode}
-                      className="scale-75 origin-right"
-                    />
+          {/* Editor Panel - Fixed at bottom or below grid */}
+          <div className={cn(
+            "fixed bottom-0 left-0 right-0 z-50 bg-background border-t shadow-[0_-5px_25px_rgba(0,0,0,0.1)] transition-transform duration-300 ease-in-out transform",
+            selectedCell ? "translate-y-0" : "translate-y-full"
+          )}>
+            <div className="container mx-auto max-w-5xl p-6">
+              <div className="flex items-start gap-6">
+                <div className="flex-1 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <Edit3 className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-lg leading-none">Bewerk Cel</h3>
+                        <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
+                          <span className="font-medium text-foreground">{selectedRow?.name}</span>
+                          <ArrowRight className="h-3 w-3" />
+                          <span>{selectedColumn?.name} ({selectedColumn?.points} pts)</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          id="ab-mode"
+                          checked={isABEnabled}
+                          onCheckedChange={toggleABMode}
+                        />
+                        <Label htmlFor="ab-mode" className="text-sm cursor-pointer select-none">A/B Versions</Label>
+                      </div>
+                      <div className="h-8 w-px bg-border" />
+                      <Button onClick={() => setSelectedCell(null)} variant="ghost" size="sm">Close</Button>
+                    </div>
                   </div>
 
                   {isABEnabled ? (
-                    <div className="grid grid-cols-2 gap-3 flex-1 min-h-0">
+                    <div className="grid grid-cols-2 gap-4 h-[200px]">
                       <div className="flex flex-col gap-2 h-full">
-                        <Label className="text-xs text-orange-600 font-bold">Version A</Label>
+                        <Label className="text-xs text-orange-600 font-bold uppercase tracking-wider">Version A</Label>
                         <Textarea
                           value={currentVersionA}
                           onChange={(e) => handleVersionChange('A', e.target.value)}
                           placeholder="Describe Version A..."
-                          className="flex-1 resize-none text-sm"
+                          className="flex-1 resize-none font-normal"
+                          autoFocus
                         />
                       </div>
                       <div className="flex flex-col gap-2 h-full">
-                        <Label className="text-xs text-blue-600 font-bold">Version B</Label>
+                        <Label className="text-xs text-blue-600 font-bold uppercase tracking-wider">Version B</Label>
                         <Textarea
                           value={currentVersionB}
                           onChange={(e) => handleVersionChange('B', e.target.value)}
                           placeholder="Describe Version B..."
-                          className="flex-1 resize-none text-sm"
+                          className="flex-1 resize-none font-normal"
                         />
                       </div>
                     </div>
                   ) : (
-                    <Textarea
-                      ref={textareaRef}
-                      value={currentDescription}
-                      onChange={(e) => handleDescriptionChange(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      placeholder="Describe what this performance level looks like for this learning goal..."
-                      className="flex-1 resize-none"
-                    />
+                    <div className="h-[200px] relative">
+                      <Textarea
+                        ref={textareaRef}
+                        value={currentDescription}
+                        onChange={(e) => handleDescriptionChange(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder="Describe the requirements for this level..."
+                        className="w-full h-full resize-none text-base p-4 leading-relaxed"
+                      />
+                      <div className="absolute bottom-4 right-4 text-xs text-muted-foreground pointer-events-none">
+                        <kbd className="hidden sm:inline-flex h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
+                          <span className="text-xs">⌘</span>Enter
+                        </kbd>
+                        <span className="ml-1">to save & next</span>
+                      </div>
+                    </div>
                   )}
-                  <div className="flex items-center justify-between mt-3">
-                    <span className="text-xs text-muted-foreground">
-                      <kbd className="px-1.5 py-0.5 rounded bg-muted text-xs font-mono">Ctrl+Enter</kbd> to save & next
-                    </span>
-                    <Button onClick={moveToNextCell} variant="outline" size="sm">
-                      Next Cell
-                      <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <div className="flex flex-1 items-center justify-center text-center">
-                  <div>
-                    <Edit3 className="mx-auto h-12 w-12 text-muted-foreground/30" />
-                    <p className="mt-3 text-muted-foreground">
-                      Click a cell in the grid to start editing
-                    </p>
-                  </div>
                 </div>
-              )}
+              </div>
             </div>
           </div>
+
+          {/* Spacer for the fixed editor */}
+          <div className="h-[300px]" />
         </div>
 
         <div className="flex gap-3 pt-4">

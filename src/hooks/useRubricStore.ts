@@ -86,6 +86,8 @@ export const useRubricStore = create<RubricStore>()(
           user_id: row.user_id,
           name: row.title,
           type: row.type,
+          // Fix for Mastery Data Loss: Map rubric_items to rows/rubricItems if present
+          rows: (row.rubric_items && row.rubric_items.length > 0) ? row.rubric_items : row.data.rows,
         }));
 
         // Handle legacy/malformed data if necessary, but assuming data column has the rubric structure
