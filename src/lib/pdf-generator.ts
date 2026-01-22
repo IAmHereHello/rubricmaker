@@ -179,7 +179,7 @@ export const generatePdf = (rubric: Rubric, students: GradedStudent[], filename?
         // Generate Table
         autoTable(doc, {
             startY: 50,
-            head: isMastery ? [['Categorie', 'Details']] : [['🎯 Leerdoel', 'Juiste antwoord', 'Punten']],
+            head: isMastery ? [['Categorie', 'Details']] : [['Leerdoel', 'Juiste antwoord', 'Punten']],
             body: tableBody,
             columnStyles: isMastery ? {
                 0: { cellWidth: 50 },
