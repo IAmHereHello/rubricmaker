@@ -77,8 +77,11 @@ const Index = () => {
         }
 
         // Save to LocalStorage
-        const storageKey = `rubric-grading-session-${rubricId}`;
-        localStorage.setItem(storageKey, JSON.stringify(sessionState));
+        const storageKey = `grading_session_${rubricId}`;
+        localStorage.setItem(storageKey, JSON.stringify({
+          data: sessionState,
+          updated_at: new Date().toISOString()
+        }));
 
         // Navigate
         toast({

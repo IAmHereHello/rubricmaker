@@ -36,8 +36,12 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             // === GUEST USER (Local Storage) ===
             if (!user) {
                 console.log('[useSessionStore] Saving to LocalStorage (Guest Mode)');
-                const key = `rubric-grading-session-${rubricId}`;
-                localStorage.setItem(key, JSON.stringify(sessionState));
+                const key = `grading_session_${rubricId}`;
+                const payload = JSON.stringify({
+                    data: sessionState,
+                    updated_at: new Date().toISOString()
+                });
+                localStorage.setItem(key, payload);
                 return;
             }
 
@@ -110,10 +114,15 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
             // === GUEST USER ===
             if (!user) {
-                const key = `rubric-grading-session-${rubricId}`;
+                const key = `grading_session_${rubricId}`;
                 const localData = localStorage.getItem(key);
                 set({ isLoading: false });
-                return localData ? JSON.parse(localData) : null;
+                if (localData) {
+                    const parsed = JSON.parse(localData);
+                    // Ensure we return the 'data' part correctly to hydrate the view
+                    return parsed.data || parsed; // fallback for old data if any
+                }
+                return null;
             }
 
             // === LOGGED IN USER ===
@@ -155,7 +164,33 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     checkActiveSession: async () => {
         try {
             const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return null;
+
+            if (!user) {
+                // Scan localStorage for any grading_session_ key
+                // We want the most recently updated one
+                let mostRecent: { rubricId: string; updatedAt: string } | null = null;
+
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key?.startsWith('grading_session_')) {
+                        try {
+                            const val = localStorage.getItem(key);
+                            if (val) {
+                                const parsed = JSON.parse(val);
+                                const rubricId = key.replace('grading_session_', '');
+                                const updatedAt = parsed.updated_at || new Date().toISOString();
+
+                                if (!mostRecent || new Date(updatedAt) > new Date(mostRecent.updatedAt)) {
+                                    mostRecent = { rubricId, updatedAt };
+                                }
+                            }
+                        } catch (e) {
+                            console.warn('Failed to parse active session key', key);
+                        }
+                    }
+                }
+                return mostRecent;
+            }
 
             const { data, error } = await supabase
                 .from('grading_sessions')
@@ -183,7 +218,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             const { data: { user } } = await supabase.auth.getUser();
 
             // Clear local
-            localStorage.removeItem(`rubric-grading-session-${rubricId}`);
+            localStorage.removeItem(`grading_session_${rubricId}`);
 
             if (user) {
                 await supabase
