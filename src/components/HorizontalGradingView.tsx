@@ -22,11 +22,12 @@ import { useToast } from '@/components/ui/use-toast';
 import { Switch } from '@/components/ui/switch';
 import { useResultsStore } from '@/hooks/useResultsStore';
 import { PrivacyKeyDialog } from '@/components/PrivacyKeyDialog';
-import { Lock, Cloud, Save, RotateCw, Edit } from 'lucide-react';
+import { Lock, Cloud, Save, RotateCw, Edit, TriangleAlert } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSessionStore } from '@/hooks/useSessionStore';
 import { generatePdf } from '@/lib/pdf-generator';
 import { GradingInput } from '@/components/GradingInput';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface HorizontalGradingViewProps {
   rubric: Rubric;
@@ -41,7 +42,10 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
   const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { saveResult, fetchResults, loadKeyFromStorage, privacyKey } = useResultsStore();
+
   const { saveSession, fetchSession, clearSession } = useSessionStore();
+  const { user } = useAuth();
+
 
   const handleSaveAndExit = () => {
     // 1. Prepare State
@@ -96,7 +100,10 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
   const [showSummary, setShowSummary] = useState(false);
   const [showPrivacyDialog, setShowPrivacyDialog] = useState(false);
 
+  // We can rely on useAuth for user status, but keep local isGuest for existing logic if needed
+  // or refactor completely. For this task, we'll use 'user' from useAuth for the warning.
   const [isGuest, setIsGuest] = useState(false);
+  const [showGuestWarning, setShowGuestWarning] = useState(true);
 
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
 
@@ -126,9 +133,11 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
   useEffect(() => {
     if (rubric.id) {
       // Check auth or use effect state
-      supabase.auth.getUser().then(({ data: { user } }) => {
-        const guest = !user;
+      supabase.auth.getUser().then(({ data: { user: supabaseUser } }) => {
+        const guest = !supabaseUser;
         setIsGuest(guest);
+        // Ensure warning is shown if guest
+        if (guest) setShowGuestWarning(true);
 
         if (guest) {
           console.log('[HorizontalGradingView] Guest user. Fetching from LocalStorage...');
@@ -902,6 +911,29 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
   return (
     <div className="min-h-screen bg-background">
 
+      {/* Guest Warning Banner */}
+      {!user && showGuestWarning && (
+        <div className="bg-amber-100 border-b border-amber-200 text-amber-900 px-4 py-3 flex items-start justify-between gap-4 animate-in slide-in-from-top-2">
+          <div className="flex items-start gap-3">
+            <TriangleAlert className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+            <div className="text-sm">
+              <p className="font-semibold">Let op: Je bent niet ingelogd.</p>
+              <p className="mt-1 opacity-90">
+                Je nakijkvoortgang wordt NIET opgeslagen. Als je de pagina ververst of sluit, ben je je werk kwijt. Log in om sessies te bewaren.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-amber-700 hover:text-amber-900 hover:bg-amber-200/50 -mt-1 -mr-2"
+            onClick={() => setShowGuestWarning(false)}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between relative">
@@ -1227,7 +1259,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
                 Previous
               </Button>
               <Button
-                onClick={handleNextStudent}
+                onClick={() => handleNextStudent()}
                 disabled={!currentStudentName.trim() || (isExam ? currentManualScore === undefined : !selectedColumn)}
                 className="flex-[2] gap-2"
                 size="lg"

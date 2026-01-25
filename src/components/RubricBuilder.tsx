@@ -38,24 +38,64 @@ const MASTERY_EXAM_STEPS = [
 
 export function RubricBuilder() {
   const [currentStep, setCurrentStep] = useState<WizardStep>(1);
-  const { saveRubric, setCurrentRubric, currentRubric } = useRubricStore();
+  const { saveRubric, setCurrentRubric, updateCurrentRubric, currentRubric } = useRubricStore();
 
   const navigate = useNavigate();
   const location = useLocation();
   const isReadOnly = location.state?.readOnly || false;
 
-  // Fix: Ensure gradingMethod is preserved when editing an existing rubric
-  useEffect(() => {
-    if (currentRubric?.id && currentRubric.gradingMethod) {
-      // Ensure the store value is respected/refreshed if needed
-      // This empty effect with dependency ensures we react to load changes
-      // but the main fix is likely ensuring the store doesn't reset it externally.
-    }
-  }, [currentRubric?.id, currentRubric?.gradingMethod]);
-
   const isExam = currentRubric?.type === 'exam';
   const isMastery = currentRubric?.gradingMethod === 'mastery';
   const steps = isExam ? (isMastery ? MASTERY_EXAM_STEPS : EXAM_STEPS) : ASSIGNMENT_STEPS;
+
+  // Reactive Total Points Calculation
+  useEffect(() => {
+    if (!currentRubric) return;
+
+    let newTotal = 0;
+    const rows = currentRubric.rows || [];
+    const columns = currentRubric.columns || [];
+
+    if (isMastery) {
+      // Scenario A: Mastery (Checklist) -> 1 point per row usually
+      // If we support weighted milestones in future, we'd sum them.
+      // For now, rows.length is the user's request, assuming 1pt each.
+      newTotal = rows.length;
+    } else if (isExam) {
+      // Scenario B (Exam): Sum of maxPoints + calculationPoints per question
+      newTotal = rows.reduce((sum, row) => sum + (row.maxPoints || 0) + (row.calculationPoints || 0), 0);
+    } else {
+      // Scenario C (Standard Rubric):
+      // Discrete: Max(col.points) * rows + calcPoints
+      // Cumulative: Sum(col.points) * rows + calcPoints
+      const calculationPointsTotal = rows.reduce((sum, row) => sum + (row.calculationPoints || 0), 0);
+
+      if (currentRubric.scoringMode === 'cumulative') {
+        const pointsPerRow = columns.reduce((sum, col) => sum + col.points, 0);
+        newTotal = (pointsPerRow * rows.length) + calculationPointsTotal;
+      } else {
+        const maxColPoints = columns.length > 0 ? Math.max(...columns.map(c => c.points)) : 0;
+        newTotal = (maxColPoints * rows.length) + calculationPointsTotal;
+      }
+    }
+
+    // Only update if changed to avoid loops
+    if (newTotal !== currentRubric.totalPossiblePoints) {
+      updateCurrentRubric({ totalPossiblePoints: newTotal });
+    }
+  }, [
+    currentRubric?.rows,
+    currentRubric?.columns,
+    currentRubric?.gradingMethod,
+    currentRubric?.scoringMode,
+    currentRubric?.type,
+    // dependencies that affect calculation
+    isMastery,
+    isExam,
+    currentRubric?.totalPossiblePoints
+  ]);
+
+
 
 
   const handleComplete = async () => {
@@ -91,6 +131,13 @@ export function RubricBuilder() {
                 'Rubric Builder'
               )}
             </h1>
+            {!isReadOnly && currentRubric && (
+              <div className="flex items-center gap-2 bg-muted px-3 py-1 rounded-md text-sm font-medium">
+                <span>Total:</span>
+                <span className="text-primary">{Math.round(currentRubric.totalPossiblePoints * 10) / 10}</span>
+                <span className="text-muted-foreground text-xs">pts</span>
+              </div>
+            )}
             <div className="w-20" />
           </div>
         </div>
