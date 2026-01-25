@@ -69,7 +69,10 @@ export const useRubricStore = create<RubricStore>()(
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
-          set({ rubrics: [], isLoading: false });
+          console.log('[useRubricStore] Guest user - fetching from LocalStorage');
+          const localData = localStorage.getItem('guest_rubrics');
+          const rubrics = localData ? JSON.parse(localData) : [];
+          set({ rubrics, isLoading: false });
           return;
         }
 
@@ -156,7 +159,44 @@ export const useRubricStore = create<RubricStore>()(
 
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error("User not authenticated");
+
+        // === GUEST LOGIC ===
+        if (!user) {
+          console.log('[useRubricStore] Saving to LocalStorage (Guest Mode)');
+
+          // 1. Generate ID if missing
+          if (!rubricToSave.id || rubricToSave.id.length < 30) {
+            rubricToSave.id = crypto.randomUUID();
+          }
+
+          // 2. Load existing guest rubrics
+          const raw = localStorage.getItem('guest_rubrics');
+          let guestRubrics: Rubric[] = raw ? JSON.parse(raw) : [];
+
+          // 3. Update or Insert
+          const index = guestRubrics.findIndex(r => r.id === rubricToSave.id);
+          if (index >= 0) {
+            guestRubrics[index] = rubricToSave;
+          } else {
+            guestRubrics.push(rubricToSave);
+          }
+
+          // 4. Save back
+          localStorage.setItem('guest_rubrics', JSON.stringify(guestRubrics));
+
+          // 5. Update State
+          // We need to mirror the logic of "replace old short ID" if applicable, 
+          // but for guests, let's keep it simple: just reload the list from what we just saved 
+          // (or update the state directly to match).
+          set({
+            rubrics: guestRubrics,
+            currentRubric: null
+          });
+
+          return;
+        }
+
+        // === LOGGED IN LOGIC ===
 
         // Attach user_id
         rubricToSave.user_id = user.id;
