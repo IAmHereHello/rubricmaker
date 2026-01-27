@@ -323,21 +323,26 @@ export const useRubricStore = create<RubricStore>()(
           }
 
           // Step 3: Upsert Items (Children)
+          // Step 3: Upsert Items (Children)
           const itemsPayload = (rubricToSave.rows || []).map((row, index) => {
-            // If ID is short (local), treat as new (undefined) so DB generates UUID
-            const isRowNew = row.id.length < 20;
-
-            return {
-              id: isRowNew ? undefined : row.id,
+            // 1. Create the base object WITHOUT id
+            const payload: any = {
               rubric_id: newRubricId,
               title: row.name, // Mapping Name -> Title
               description: row.description,
               position: index,
               requirements: row.requirements || [],
               min_requirements: row.minRequirements || 1,
-              // Fixed: Strict default for routes
               routes: row.routes || ['orange', 'yellow', 'blue']
             };
+
+            // 2. Only attach ID if it is a valid UUID (existing item)
+            // If row.id is null, undefined, or a temp string, DO NOT add it to payload.
+            if (row.id && row.id.length > 20) {
+              payload.id = row.id;
+            }
+
+            return payload;
           });
 
           if (itemsPayload.length > 0) {
