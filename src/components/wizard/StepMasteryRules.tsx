@@ -144,135 +144,11 @@ export function StepMasteryRules({ onComplete, onBack }: StepMasteryRulesProps) 
                     </div>
                 )}
 
-                {rules.map((rule, idx) => {
-                    const totalQuestions = goalCounts[rule.learningGoal];
-                    const percent = Math.round((rule.threshold / totalQuestions) * 100);
-
-                    return (
-                        <div key={rule.learningGoal} className="border rounded-lg p-6 bg-card/50 space-y-4">
-                            <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-3">
-                                    <Badge variant="outline" className="text-lg px-3 py-1 font-bold">
-                                        {rule.learningGoal}
-                                    </Badge>
-                                    <span className="text-muted-foreground text-sm">
-                                        {totalQuestions} questions
-                                    </span>
-                                </div>
-                                <div className="text-right">
-                                    <span className={`font-bold text-lg ${percent > 80 ? 'text-status-expert' : 'text-primary'}`}>
-                                        {rule.threshold} / {totalQuestions}
-                                    </span>
-                                    <span className="text-sm text-muted-foreground ml-2">
-                                        ({percent}%) to Pass
-                                    </span>
-                                </div>
-                            </div>
-
-                            {/* Threshold Slider */}
-                            <div className="space-y-3 p-4 bg-muted/20 rounded-md">
-                                <div className="flex justify-between items-center">
-                                    <Label>Question Threshold</Label>
-                                    <span className="text-sm text-muted-foreground">
-                                        Minimum correct answers required
-                                    </span>
-                                </div>
-                                <Slider
-                                    value={[rule.threshold]}
-                                    min={1}
-                                    max={totalQuestions}
-                                    step={1}
-                                    onValueChange={(vals) => handleUpdateRule(idx, { threshold: vals[0] })}
-                                    className="py-2"
-                                />
-                            </div>
-
-                            {/* Extra Conditions */}
-                            <div className="space-y-3">
-                                <div className="flex justify-between items-center mb-2">
-                                    <Label className="flex items-center gap-2">
-                                        <CheckCircle2 className="h-4 w-4" />
-                                        Mandatory Conditions (Optional)
-                                    </Label>
-                                    <div className="flex items-center gap-2">
-                                        {rule.extraConditions.length > 0 && (
-                                            <div className="flex items-center gap-2 bg-muted/50 px-2 py-1 rounded text-xs border">
-                                                <span className="text-muted-foreground">Require:</span>
-                                                <Input
-                                                    type="number"
-                                                    className="h-7 w-12 px-1 text-center bg-background"
-                                                    min={1}
-                                                    max={rule.extraConditions.length}
-                                                    value={rule.minConditions === undefined ? rule.extraConditions.length : rule.minConditions}
-                                                    onChange={(e) => {
-                                                        const val = parseInt(e.target.value);
-                                                        if (!isNaN(val) && val >= 1 && val <= rule.extraConditions.length) {
-                                                            handleUpdateRule(idx, { minConditions: val });
-                                                        }
-                                                    }}
-                                                />
-                                                <span className="text-muted-foreground">/ {rule.extraConditions.length}</span>
-                                            </div>
-                                        )}
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => handleAddCondition(idx)}
-                                            className="text-primary hover:text-primary/80"
-                                        >
-                                            <Plus className="h-4 w-4 mr-1" />
-                                            Add Condition
-                                        </Button>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    {rule.extraConditions.length === 0 && (
-                                        <p className="text-sm text-muted-foreground italic pl-6">
-                                            No extra conditions (e.g., "Shown work", "Given correct units").
-                                        </p>
-                                    )}
-                                    {rule.extraConditions.map((cond, cIdx) => (
-                                        <div key={cIdx} className="flex gap-2 items-center animate-in fade-in slide-in-from-top-1">
-                                            <Checkbox checked disabled className="opacity-50" />
-                                            <Input
-                                                value={cond}
-                                                onChange={(e) => handleConditionChange(idx, cIdx, e.target.value)}
-                                                placeholder="e.g. Calculation steps shown..."
-                                                className="h-9"
-                                            />
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => handleRemoveCondition(idx, cIdx)}
-                                                className="text-destructive hover:bg-destructive/10 h-9 w-9 p-0"
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    );
-                })}
-
-
-
+                {/* Removed Learning Goal Rules UI as per request to cleanup Thresholds section */}
 
                 {/* Route Normering / Thresholds Section */}
-                <div className="border-t pt-8 mt-8">
-                    <CardHeader className="px-0 pt-0">
-                        <CardTitle className="text-xl flex items-center gap-2">
-                            <Target className="h-6 w-6 text-primary" />
-                            Normering per Leerroute
-                        </CardTitle>
-                        <CardDescription>
-                            Bepaal hoeveel 'vinkjes' (punten) nodig zijn voor een niveau.
-                        </CardDescription>
-                    </CardHeader>
+                <div className="pt-2">
+                    {/* Removed border-t and mt-8 since this is now the main content */}
 
                     <div className="bg-card border rounded-lg overflow-hidden">
                         <div className="grid grid-cols-3 bg-muted/50 p-4 font-bold border-b text-sm">
@@ -281,38 +157,43 @@ export function StepMasteryRules({ onComplete, onBack }: StepMasteryRulesProps) 
                             <div className="text-center">Min. voor "Expert" (8.0+)</div>
                         </div>
                         {(['orange', 'yellow', 'blue'] as const).map(route => {
-                            // Calculate total possible based on route?
-                            // Currently routes are on rows.
-                            const routeTotal = rows.filter(r => r.routes?.includes(route)).length;
+                            // Calculate total possible based on route
+                            const routeTotal = rows.filter(r => (r.routes || ['orange', 'yellow', 'blue']).includes(route)).length;
                             const label = route === 'orange' ? 'Oranje (Basis)' : route === 'yellow' ? 'Geel (Gevorderd)' : 'Blauw (Expert)';
                             const colorClass = route === 'orange' ? 'text-orange-600' : route === 'yellow' ? 'text-yellow-600' : 'text-blue-600';
                             const bgClass = route === 'orange' ? 'bg-orange-50' : route === 'yellow' ? 'bg-yellow-50' : 'bg-blue-50';
 
                             return (
-                                <div key={route} className={`grid grid-cols-3 p-4 items-center border-b last:border-0 ${bgClass}`}>
+                                <div key={route} className={`grid grid-cols-3 p-4 items-center border-b last:border-0 ${bgClass} gap-4`}>
                                     <div className={`font-semibold ${colorClass} flex flex-col`}>
                                         <span>{label}</span>
                                         <span className="text-xs text-muted-foreground font-normal">Totaal beschikbaar: {routeTotal}</span>
                                     </div>
-                                    <div className="px-4">
-                                        <Input
-                                            type="number"
+                                    <div className="px-2 flex flex-col items-center gap-2">
+                                        <Slider
+                                            value={[masteryThresholds[route]?.beheerst || 0]}
                                             min={0}
                                             max={routeTotal}
-                                            className="text-center"
-                                            value={masteryThresholds[route]?.beheerst || ''}
-                                            onChange={(e) => handleThresholdChange(route, 'beheerst', e.target.value)}
+                                            step={1}
+                                            onValueChange={(vals) => handleThresholdChange(route, 'beheerst', vals[0].toString())}
+                                            className="w-full"
                                         />
+                                        <div className="text-sm font-medium bg-background border px-2 py-0.5 rounded shadow-sm min-w-[3rem] text-center">
+                                            {masteryThresholds[route]?.beheerst || 0}
+                                        </div>
                                     </div>
-                                    <div className="px-4">
-                                        <Input
-                                            type="number"
+                                    <div className="px-2 flex flex-col items-center gap-2">
+                                        <Slider
+                                            value={[masteryThresholds[route]?.expert || 0]}
                                             min={0}
                                             max={routeTotal}
-                                            className="text-center"
-                                            value={masteryThresholds[route]?.expert || ''}
-                                            onChange={(e) => handleThresholdChange(route, 'expert', e.target.value)}
+                                            step={1}
+                                            onValueChange={(vals) => handleThresholdChange(route, 'expert', vals[0].toString())}
+                                            className="w-full"
                                         />
+                                        <div className="text-sm font-medium bg-background border px-2 py-0.5 rounded shadow-sm min-w-[3rem] text-center">
+                                            {masteryThresholds[route]?.expert || 0}
+                                        </div>
                                     </div>
                                 </div>
                             );

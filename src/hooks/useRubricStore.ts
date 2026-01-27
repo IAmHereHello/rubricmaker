@@ -213,13 +213,15 @@ export const useRubricStore = create<RubricStore>()(
           type: rubricToSave.type,
           // Ensure we map separate rubric_items for the relational table
           // This is critical for Mastery Rubrics checklist items
-          rubric_items: rubricToSave.rows.map((r, index) => ({
+          // Fix: Explicitly use the rows from the rubricToSave object
+          rubric_items: (rubricToSave.rows || []).map((r, index) => ({
             title: r.name,
             description: r.description || '',
             position: r.position !== undefined ? r.position : index,
             learning_goal: r.learningGoal || null,
             max_points: r.maxPoints || 0,
             is_bonus: r.isBonus || false,
+            // Ensure routes are saved for Mastery logic
             routes: r.routes || []
           })),
           data: rubricToSave

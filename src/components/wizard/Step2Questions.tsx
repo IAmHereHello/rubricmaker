@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -109,7 +110,46 @@ export function Step2Questions({ onNext, onBack }: Step2QuestionsProps) {
                                     </div>
 
                                     <div className="space-y-2">
-                                        <Label htmlFor={`desc-${row.id}`}>Description / Criteria (Optional)</Label>
+                                        <div className="flex items-center justify-between">
+                                            <Label htmlFor={`desc-${row.id}`}>Description / Criteria (Optional)</Label>
+                                            <div className="flex items-center gap-4">
+                                                <span className="text-xs font-medium text-muted-foreground">Assign to:</span>
+                                                {(['orange', 'yellow', 'blue'] as const).map((color) => {
+                                                    const isActive = (row.routes || ['orange', 'yellow', 'blue']).includes(color);
+                                                    return (
+                                                        <div key={color} className="flex items-center gap-1.5">
+                                                            <Checkbox
+                                                                id={`route-${row.id}-${color}`}
+                                                                checked={isActive}
+                                                                onCheckedChange={(checked) => {
+                                                                    const current = row.routes || ['orange', 'yellow', 'blue'];
+                                                                    const newRoutes = checked
+                                                                        ? [...current, color]
+                                                                        : current.filter(r => r !== color);
+                                                                    updateRow(row.id, { routes: newRoutes });
+                                                                }}
+                                                                className={cn(
+                                                                    color === 'orange' && "data-[state=checked]:bg-orange-500 data-[state=checked]:border-orange-500",
+                                                                    color === 'yellow' && "data-[state=checked]:bg-yellow-500 data-[state=checked]:border-yellow-500",
+                                                                    color === 'blue' && "data-[state=checked]:bg-blue-500 data-[state=checked]:border-blue-500"
+                                                                )}
+                                                            />
+                                                            <Label
+                                                                htmlFor={`route-${row.id}-${color}`}
+                                                                className={cn(
+                                                                    "text-xs capitalize cursor-pointer",
+                                                                    color === 'orange' && "text-orange-700 dark:text-orange-400",
+                                                                    color === 'yellow' && "text-yellow-700 dark:text-yellow-400",
+                                                                    color === 'blue' && "text-blue-700 dark:text-blue-400"
+                                                                )}
+                                                            >
+                                                                {color}
+                                                            </Label>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
                                         <Textarea
                                             id={`desc-${row.id}`}
                                             value={row.description || ''}
@@ -154,36 +194,7 @@ export function Step2Questions({ onNext, onBack }: Step2QuestionsProps) {
                                             </div>
                                         )}
 
-                                        {/* Route Selector */}
-                                        <div className="flex items-center gap-1.5 border rounded-md px-3 h-10">
-                                            <span className="text-xs font-medium text-muted-foreground mr-1">Routes:</span>
-                                            {(['orange', 'yellow', 'blue'] as const).map((color) => {
-                                                const isActive = (row.routes || ['orange', 'yellow', 'blue']).includes(color);
-                                                return (
-                                                    <button
-                                                        key={color}
-                                                        onClick={() => {
-                                                            const current = row.routes || ['orange', 'yellow', 'blue'];
-                                                            const newRoutes = current.includes(color)
-                                                                ? current.filter(r => r !== color)
-                                                                : [...current, color];
-                                                            updateRow(row.id, { routes: newRoutes });
-                                                        }}
-                                                        className={cn(
-                                                            "h-5 w-5 rounded-full border-2 transition-all",
-                                                            color === 'orange' && "border-orange-500",
-                                                            color === 'yellow' && "border-yellow-500",
-                                                            color === 'blue' && "border-blue-500",
-                                                            isActive ? (
-                                                                color === 'orange' ? "bg-orange-500" :
-                                                                    color === 'yellow' ? "bg-yellow-500" : "bg-blue-500"
-                                                            ) : "bg-transparent opacity-30 hover:opacity-60"
-                                                        )}
-                                                        title={`Toggle ${color} route`}
-                                                    />
-                                                );
-                                            })}
-                                        </div>
+
 
                                         {/* Bonus Toggle */}
                                         <div className="flex items-center gap-2 border rounded-md px-3 h-10 ml-auto">

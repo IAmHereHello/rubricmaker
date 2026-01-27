@@ -55,11 +55,12 @@ export function RubricBuilder() {
     let newTotal = 0;
     const rows = currentRubric.rows || [];
     const columns = currentRubric.columns || [];
+    const isMastery = currentRubric.gradingMethod === 'mastery';
+    const isExam = currentRubric.type === 'exam';
 
     if (isMastery) {
-      // Scenario A: Mastery (Checklist) -> 1 point per row usually
-      // If we support weighted milestones in future, we'd sum them.
-      // For now, rows.length is the user's request, assuming 1pt each.
+      // Fix: In checklist mode, 1 item = 1 point.
+      // Sum length as requested.
       newTotal = rows.length;
     } else if (isExam) {
       // Scenario B (Exam): Sum of maxPoints + calculationPoints per question
@@ -81,6 +82,7 @@ export function RubricBuilder() {
 
     // Only update if changed to avoid loops
     if (newTotal !== currentRubric.totalPossiblePoints) {
+      console.log(`[RubricBuilder] Updating Total Points to ${newTotal} (Mode: ${isMastery ? 'Mastery' : 'Standard'})`);
       updateCurrentRubric({ totalPossiblePoints: newTotal });
     }
   }, [
@@ -89,9 +91,7 @@ export function RubricBuilder() {
     currentRubric?.gradingMethod,
     currentRubric?.scoringMode,
     currentRubric?.type,
-    // dependencies that affect calculation
-    isMastery,
-    isExam,
+    // Include totalPossiblePoints to prevent infinite loop but allow check
     currentRubric?.totalPossiblePoints
   ]);
 
