@@ -211,22 +211,18 @@ export const useRubricStore = create<RubricStore>()(
           title: rubricToSave.name,
           description: '',
           type: rubricToSave.type,
-          // Ensure we map separate rubric_items for the relational table
-          // This is critical for Mastery Rubrics checklist items
-          // Fix: Explicitly use the rows from the rubricToSave object
-          rubric_items: (rubricToSave.rows || []).map((r, index) => ({
-            title: r.name,
-            description: r.description || '',
-            position: r.position !== undefined ? r.position : index,
-            learning_goal: r.learningGoal || null,
-            max_points: r.maxPoints || 0,
-            is_bonus: r.isBonus || false,
-            // Ensure routes are saved for Mastery logic
-            routes: r.routes || [],
-            requirements: r.requirements || [],
-            min_requirements: r.minRequirements || 1
-          })),
-          data: rubricToSave
+
+          // Refactored to save EVERYTHING into the JSONB 'data' column
+          // We map rows explicitly to ensure all new fields are preserved
+          data: {
+            ...rubricToSave,
+            rows: (rubricToSave.rows || []).map(r => ({
+              ...r,
+              requirements: r.requirements || [],
+              minRequirements: r.minRequirements || 1,
+              routes: r.routes || []
+            }))
+          }
         };
 
         const { data, error } = await supabase
