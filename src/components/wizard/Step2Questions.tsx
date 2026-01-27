@@ -159,6 +159,92 @@ export function Step2Questions({ onNext, onBack }: Step2QuestionsProps) {
                                         />
                                     </div>
 
+                                    {/* Mastery Checklist Criteria UI */}
+                                    {currentRubric?.gradingMethod === 'mastery' && (
+                                        <div className="bg-muted/30 p-4 rounded-md border space-y-4">
+                                            <div className="flex items-center justify-between">
+                                                <Label className="flex items-center gap-2">
+                                                    <Target className="h-4 w-4" />
+                                                    Beoordelingscriteria (Sub-voorwaarden)
+                                                </Label>
+                                                <span className="text-xs text-muted-foreground">
+                                                    Checklist voor de docent
+                                                </span>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                {(row.requirements || []).map((req, reqIdx) => (
+                                                    <div key={reqIdx} className="flex gap-2 items-center">
+                                                        <span className="text-xs font-mono text-muted-foreground w-4">{reqIdx + 1}.</span>
+                                                        <Input
+                                                            value={req}
+                                                            onChange={(e) => {
+                                                                const newReqs = [...(row.requirements || [])];
+                                                                newReqs[reqIdx] = e.target.value;
+                                                                updateRow(row.id, { requirements: newReqs });
+                                                            }}
+                                                            className="h-8 text-sm"
+                                                        />
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => {
+                                                                const newReqs = (row.requirements || []).filter((_, i) => i !== reqIdx);
+                                                                const newMin = row.minRequirements
+                                                                    ? Math.min(row.minRequirements, newReqs.length || 1)
+                                                                    : 1;
+                                                                updateRow(row.id, { requirements: newReqs, minRequirements: newMin });
+                                                            }}
+                                                            className="h-8 w-8 p-0 text-destructive"
+                                                        >
+                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </div>
+                                                ))}
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        const newReqs = [...(row.requirements || []), ""];
+                                                        updateRow(row.id, { requirements: newReqs });
+                                                    }}
+                                                    className="w-full h-8 text-xs border-dashed"
+                                                >
+                                                    <Plus className="mr-2 h-3 w-3" />
+                                                    Voeg criterium toe
+                                                </Button>
+                                            </div>
+
+                                            <div className="flex items-center gap-4 pt-2 border-t">
+                                                <div className="flex-1">
+                                                    <Label htmlFor={`min-${row.id}`} className="text-xs text-muted-foreground block mb-1">
+                                                        Minimaal aantal criteria voor punt:
+                                                    </Label>
+                                                    <div className="flex items-center gap-2">
+                                                        <Input
+                                                            id={`min-${row.id}`}
+                                                            type="number"
+                                                            min={1}
+                                                            max={(row.requirements?.length || 1)}
+                                                            value={row.minRequirements || 1}
+                                                            onChange={(e) => {
+                                                                const val = parseInt(e.target.value) || 1;
+                                                                // Validate
+                                                                const max = Math.max(1, row.requirements?.length || 0);
+                                                                const safeVal = Math.min(Math.max(1, val), max);
+                                                                updateRow(row.id, { minRequirements: safeVal });
+                                                            }}
+                                                            className="w-20 h-8 text-center"
+                                                        />
+                                                        <span className="text-xs text-muted-foreground">
+                                                            van de {Math.max(1, row.requirements?.length || 0)} voorwaarden
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     <div className="flex flex-wrap items-end gap-3 pt-2">
                                         {/* Max Points - Hide for Mastery (Fixed to 1) */}
                                         {currentRubric?.gradingMethod !== 'mastery' && (

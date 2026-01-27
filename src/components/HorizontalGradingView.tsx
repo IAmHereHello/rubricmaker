@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useRubricStore } from '@/hooks/useRubricStore';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { GradedStudentsTable } from '@/components/GradedStudentsTable';
 import { cn } from '@/lib/utils';
 import { jsPDF } from 'jspdf';
@@ -1207,30 +1208,98 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
               </h3>
 
               <div className="w-full max-w-2xl space-y-4">
-                {/* Main Input Component */}
-                <GradingInput
-                  row={currentRow}
-                  rubric={rubric}
-                  selectedValue={isExam ? currentManualScore : selectedColumn}
-                  onChange={(val, feedback, correct) => {
-                    if (isExam) {
-                      setCurrentManualScore(val as number);
-                    } else {
-                      handleColumnSelect(val as string);
-                    }
-                  }}
-                  isExam={isExam}
-                  cellFeedback={currentCellFeedback}
-                  onFeedbackChange={(fb) => {
-                    setCurrentCellFeedback(fb);
-                  }}
-                  calculationCorrect={calculationCorrect}
-                  onCalculationChange={(correct) => {
-                    setCalculationCorrect(correct);
-                  }}
-                  readOnly={currentStudentData.notMadeRows?.[currentRow.id]}
-                  version={currentStudentData.rubricVersion}
-                />
+                {/* Main Input Component or Mastery Checklist */}
+                {(isMastery && currentRow.requirements && currentRow.requirements.length > 0) ? (
+                  <div className="bg-card border rounded-lg p-6 space-y-6 shadow-sm">
+                    <div className="text-center space-y-1 mb-4">
+                      <h4 className="font-medium text-lg">Beoordelingscriteria</h4>
+                      <p className="text-sm text-muted-foreground">
+                        Minimaal {currentRow.minRequirements || 1} van de {currentRow.requirements.length} punten vereist.
+                      </p>
+                    </div>
+
+                    <div className="space-y-3">
+                      {currentRow.requirements.map((req, idx) => {
+                        const isChecked = currentStudentData.extraConditionsMet?.[currentRow.id]?.[idx] || false;
+                        return (
+                          <div key={idx} className="flex items-start gap-3 p-3 rounded-md hover:bg-accent/50 transition-colors border border-transparent hover:border-accent">
+                            <Checkbox
+                              id={`req-${idx}`}
+                              checked={isChecked}
+                              onCheckedChange={(checked) => {
+                                // 1. Update Checkbox State
+                                const currentMap = currentStudentData.extraConditionsMet?.[currentRow.id] || {};
+                                const newMap = { ...currentMap, [idx]: !!checked };
+
+                                const newExtraConditionsMet = {
+                                  ...currentStudentData.extraConditionsMet,
+                                  [currentRow.id]: newMap
+                                };
+
+                                // 2. Calculate New Score
+                                const checkedCount = Object.values(newMap).filter(Boolean).length;
+                                const minReq = currentRow.minRequirements || 1;
+                                const isPass = checkedCount >= minReq;
+                                const newScore = isPass ? 1 : 0;
+                                const newRowScores = { ...currentStudentData.rowScores, [currentRow.id]: newScore };
+
+                                updateStudentData(currentStudentName, {
+                                  extraConditionsMet: newExtraConditionsMet,
+                                  rowScores: newRowScores
+                                });
+                              }}
+                              className="mt-1 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                            />
+                            <div className="grid gap-1.5 leading-none">
+                              <Label
+                                htmlFor={`req-${idx}`}
+                                className={cn(
+                                  "text-sm font-medium leading-normal cursor-pointer",
+                                  isChecked ? "text-foreground" : "text-muted-foreground"
+                                )}
+                              >
+                                {req}
+                              </Label>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className={cn(
+                      "mt-4 p-3 rounded-md text-center font-bold text-sm border transition-all duration-300",
+                      (currentStudentData.rowScores?.[currentRow.id] === 1)
+                        ? "bg-green-100 text-green-700 border-green-200"
+                        : "bg-muted text-muted-foreground border-transparent"
+                    )}>
+                      Resultaat: {(currentStudentData.rowScores?.[currentRow.id] === 1) ? "VOLDAAN (1 Punt)" : "Nog niet voldaan (0 Punten)"}
+                    </div>
+                  </div>
+                ) : (
+                  <GradingInput
+                    row={currentRow}
+                    rubric={rubric}
+                    selectedValue={isExam ? currentManualScore : selectedColumn}
+                    onChange={(val, feedback, correct) => {
+                      if (isExam) {
+                        setCurrentManualScore(val as number);
+                      } else {
+                        handleColumnSelect(val as string);
+                      }
+                    }}
+                    isExam={isExam}
+                    cellFeedback={currentCellFeedback}
+                    onFeedbackChange={(fb) => {
+                      setCurrentCellFeedback(fb);
+                    }}
+                    calculationCorrect={calculationCorrect}
+                    onCalculationChange={(correct) => {
+                      setCalculationCorrect(correct);
+                    }}
+                    readOnly={currentStudentData.notMadeRows?.[currentRow.id]}
+                    version={currentStudentData.rubricVersion}
+                  />
+                )}
 
                 {/* Not Made Button */}
                 <div className="flex justify-center">

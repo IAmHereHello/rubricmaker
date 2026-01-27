@@ -222,7 +222,9 @@ export const useRubricStore = create<RubricStore>()(
             max_points: r.maxPoints || 0,
             is_bonus: r.isBonus || false,
             // Ensure routes are saved for Mastery logic
-            routes: r.routes || []
+            routes: r.routes || [],
+            requirements: r.requirements || [],
+            min_requirements: r.minRequirements || 1
           })),
           data: rubricToSave
         };

@@ -14,6 +14,8 @@ export interface Row {
   description?: string; // For exams: Optional question description
   routes?: ('orange' | 'yellow' | 'blue')[]; // Differentiation routes
   position?: number; // Sorting order
+  requirements?: string[]; // Mastery: Checklist conditions
+  minRequirements?: number; // Mastery: Min conditions to pass
 }
 
 export interface CriteriaCell {
