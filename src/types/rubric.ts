@@ -136,3 +136,21 @@ export interface LearningGoalRule {
   extraConditions: string[]; // List of custom checkbox labels
   minConditions?: number; // Minimum number of conditions that must be checked (default: all)
 }
+
+export interface SessionStudent {
+  id: string;
+  session_id: string;
+  name: string;
+  status: 'pending' | 'submitted';
+  submitted_at?: string;
+  student_key?: string; // Optional unique key for the student in this session
+}
+
+export interface ClassSession {
+  id: string;
+  rubric_id: string;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+  students?: SessionStudent[]; // Optional joined data
+}

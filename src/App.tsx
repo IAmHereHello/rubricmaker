@@ -12,6 +12,7 @@ import HorizontalGrade from "./pages/HorizontalGrade";
 import Results from "./pages/Results";
 import NotFound from "./pages/NotFound";
 import StudentAssessmentPage from "./pages/StudentAssessmentPage";
+import StudentSessionPage from "./pages/StudentSessionPage";
 
 const queryClient = new QueryClient();
 
@@ -40,6 +41,7 @@ const App = () => (
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<Login />} />
+              <Route path="/student/session/:sessionId" element={<StudentSessionPage />} />
               <Route path="/student/:rubricId" element={<StudentAssessmentPage />} />
 
               {/* Protected Routes */}

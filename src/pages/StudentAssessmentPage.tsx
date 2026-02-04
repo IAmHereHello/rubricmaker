@@ -14,21 +14,49 @@ import { useToast } from '@/components/ui/use-toast';
 
 type StudentStep = 'intro' | 'assessment' | 'success';
 
-export default function StudentAssessmentPage() {
-  const { rubricId } = useParams();
+interface StudentAssessmentPageProps {
+  rubricId?: string;
+  sessionStudentName?: string;
+  sessionClassName?: string;
+  onSessionComplete?: () => Promise<void>;
+}
+
+export default function StudentAssessmentPage({
+  rubricId: propRubricId,
+  sessionStudentName,
+  sessionClassName,
+  onSessionComplete
+}: StudentAssessmentPageProps = {}) {
+  const { rubricId: paramRubricId } = useParams();
+  const rubricId = propRubricId || paramRubricId;
+
   const [searchParams] = useSearchParams();
   const urlClass = searchParams.get('class');
 
   const [step, setStep] = useState<StudentStep>('intro');
   const [loading, setLoading] = useState(true);
-  const [rubric, setRubric] = useState<Rubric | null>(null);
+
+  // Use props if available (Session Mode) or state (Public Link Mode)
+  // If props are provided, we skip the 'intro' step unless name is missing.
+  // Actually, if sessionStudentName is provided, we can assume we are ready to start or just pre-fill.
+  // Let's pre-fill and auto-start if valid.
 
   // Student Data
-  const [studentName, setStudentName] = useState('');
-  const [className, setClassName] = useState(urlClass || '');
+  const [studentName, setStudentName] = useState(sessionStudentName || '');
+  const [className, setClassName] = useState(sessionClassName || urlClass || '');
   const [answers, setAnswers] = useState<Record<string, any>>({});
   // Track checklist progress properly so it survives manual override
   const [checklistProgress, setChecklistProgress] = useState<Record<string, Record<string, boolean>>>({});
+
+  const [rubric, setRubric] = useState<Rubric | null>(null);
+
+
+  useEffect(() => {
+    // If in session mode (props provided), auto-start if we have data
+    if (sessionStudentName && sessionClassName && step === 'intro') {
+      setStep('assessment');
+    }
+  }, [sessionStudentName, sessionClassName]);
 
   const { toast } = useToast();
 
@@ -78,26 +106,56 @@ export default function StudentAssessmentPage() {
   };
 
   const handleSubmit = async () => {
+    // 1. Validate Student Name
+    if (!studentName.trim()) {
+      toast({
+        title: "Naam vereist",
+        description: "Vul je naam in om in te leveren.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // 2. Validate Component State/Rubric
+    if (!rubric?.id) {
+      toast({
+        title: "Technische Fout",
+        description: "Er is een technische fout: Rubric niet geladen. Herlaad de pagina.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // 3. Confirm Empty Answers
+    const hasAnswers = Object.keys(answers).length > 0;
+    if (!hasAnswers) {
+      const confirmed = window.confirm("Je hebt nog niets ingevuld. Weet je zeker dat je wilt inleveren?");
+      if (!confirmed) return;
+    }
+
     try {
       setLoading(true);
-      // Construct the payload for submission
-      // Validation if needed
 
       const { error } = await supabase.rpc('submit_assessment', {
-        p_rubric_id: rubric?.id,
+        p_rubric_id: rubric.id,
         p_student_name: studentName,
-        p_class_name: className,
-        p_data: answers
+        p_class_name: className || null, // Explicit null
+        p_data: answers || {} // Explicit object
       });
 
       if (error) throw error;
 
       setStep('success');
+
+      // Trigger callback if provided (for Session Mode status update)
+      if (onSessionComplete) {
+        await onSessionComplete();
+      }
     } catch (err) {
       console.error('Submission failed', err);
       toast({
-        title: "Submission Failed",
-        description: "Could not save your assessment. Please try again.",
+        title: "Inleveren Mislukt",
+        description: "Kon je beoordeling niet opslaan. Probeer het opnieuw.",
         variant: "destructive"
       });
       setLoading(false);
