@@ -62,13 +62,22 @@ export default function ReflectionManager({ rubricId }: ReflectionManagerProps) 
 
         try {
             setCreating(true);
+
+            // Get Current User
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+                toast({ title: "Fout", description: "Je bent niet ingelogd.", variant: "destructive" });
+                return;
+            }
+
             // 1. Create Session
             const { data: sessionData, error: sessionError } = await supabase
                 .from('grading_sessions')
                 .insert({
                     rubric_id: rubricId,
                     name: newName,
-                    is_active: true
+                    is_active: true,
+                    user_id: user.id
                 })
                 .select()
                 .single();
