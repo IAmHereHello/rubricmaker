@@ -125,47 +125,76 @@ export default function StudentAssessmentPage() {
             <CardContent>
               {isMastery ? (
                 // Mastery / Checkbox Style
-                <div className="flex items-start space-x-3">
-                  <Checkbox
-                    id={`row-${row.id}`}
-                    checked={answers[row.id] === true}
-                    onCheckedChange={(checked) =>
-                      setAnswers(prev => ({ ...prev, [row.id]: checked === true }))
-                    }
-                  />
-                  <label
-                    htmlFor={`row-${row.id}`}
-                    className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 font-normal"
-                  >
-                    {/* If Mastery has columns/descriptions, display them? 
-                           Usually Mastery is "Beheerst" vs "Niet Beheerst".
-                           If the row has specific mastery text, show it.
-                        */}
-                    Ik beheers dit onderdeel.
-                  </label>
+                <div className="space-y-3">
+                  {row.requirements && row.requirements.length > 0 ? (
+                    row.requirements.map((req, idx) => (
+                      <div key={idx} className="flex items-start space-x-3 p-2 rounded hover:bg-muted/50 transition-colors">
+                        <Checkbox
+                          id={`row-${row.id}-req-${idx}`}
+                          checked={answers[row.id]?.[idx] === true}
+                          onCheckedChange={(checked) => {
+                            setAnswers(prev => {
+                              const currentMap = prev[row.id] || {};
+                              return {
+                                ...prev,
+                                [row.id]: { ...currentMap, [idx]: checked === true }
+                              };
+                            });
+                          }}
+                        />
+                        <label
+                          htmlFor={`row-${row.id}-req-${idx}`}
+                          className="text-sm leading-snug cursor-pointer font-normal mt-0.5"
+                        >
+                          {req}
+                        </label>
+                      </div>
+                    ))
+                  ) : (
+                    // Fallback if no requirements definition found for this row
+                    <div className="flex items-start space-x-3">
+                      <Checkbox
+                        id={`row-${row.id}`}
+                        checked={answers[row.id] === true}
+                        onCheckedChange={(checked) =>
+                          setAnswers(prev => ({ ...prev, [row.id]: checked === true }))
+                        }
+                      />
+                      <label htmlFor={`row-${row.id}`} className="text-sm cursor-pointer ml-2">
+                        Ik beheers dit onderdeel.
+                      </label>
+                    </div>
+                  )}
                 </div>
               ) : (
                 // Standard / Radio Style
                 <div className="space-y-4">
-                  {rubric.columns.map((col) => (
-                    <div key={col.id} className={cn(
-                      "flex items-start space-x-3 p-3 rounded-lg border transition-colors cursor-pointer hover:bg-muted/50",
-                      answers[row.id] === col.id ? "bg-primary/5 border-primary" : "border-border"
-                    )}
-                      onClick={() => setAnswers(prev => ({ ...prev, [row.id]: col.id }))}
-                    >
-                      <div className={cn(
-                        "w-4 h-4 mt-1 rounded-full border border-primary shrink-0 flex items-center justify-center",
-                        answers[row.id] === col.id ? "bg-primary" : "bg-transparent"
-                      )}>
-                        {answers[row.id] === col.id && <div className="w-2 h-2 rounded-full bg-primary-foreground" />}
+                  {rubric.columns && rubric.columns.length > 0 ? (
+                    rubric.columns.map((col) => (
+                      <div key={col.id} className={cn(
+                        "flex items-start space-x-3 p-3 rounded-lg border transition-colors cursor-pointer hover:bg-muted/50",
+                        answers[row.id] === col.id ? "bg-primary/5 border-primary" : "border-border"
+                      )}
+                        onClick={() => setAnswers(prev => ({ ...prev, [row.id]: col.id }))}
+                      >
+                        <div className={cn(
+                          "w-4 h-4 mt-1 rounded-full border border-primary shrink-0 flex items-center justify-center",
+                          answers[row.id] === col.id ? "bg-primary" : "bg-transparent"
+                        )}>
+                          {answers[row.id] === col.id && <div className="w-2 h-2 rounded-full bg-primary-foreground" />}
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-semibold text-sm">{col.name}</div>
+                          {/* Note: standard columns use 'name' not 'title' in strict type, check type definition if needed. column.name is standard. */}
+                          {/* rubric.columns element type is Column { id, name, points } */}
+                        </div>
                       </div>
-                      <div className="flex-1">
-                        <div className="font-semibold text-sm">{col.title}</div>
-                        {col.description && <div className="text-sm text-muted-foreground mt-1">{col.description}</div>}
-                      </div>
+                    ))
+                  ) : (
+                    <div className="text-sm text-muted-foreground italic">
+                      Geen niveaus gevonden voor dit criterium.
                     </div>
-                  ))}
+                  )}
                 </div>
               )}
             </CardContent>
