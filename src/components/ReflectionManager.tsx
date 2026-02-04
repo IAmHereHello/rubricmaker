@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
-import { Loader2, Trash2, Copy, Users, external-link } from 'lucide-react';
+import { Loader2, Trash2, Copy, Users, ExternalLink } from 'lucide-react';
 
 interface ReflectionManagerProps {
     rubricId: string;
