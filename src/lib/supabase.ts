@@ -11,4 +11,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
 // Ensure no trailing slash
 const cleanSupabaseUrl = supabaseUrl.replace(/\/$/, '');
 
-export const supabase = createClient(cleanSupabaseUrl, supabaseAnonKey);
+export const supabase = createClient(cleanSupabaseUrl, supabaseAnonKey, {
+    global: {
+        headers: {
+            'apikey': supabaseAnonKey
+        }
+    }
+});

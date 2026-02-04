@@ -13,6 +13,7 @@ import Results from "./pages/Results";
 import NotFound from "./pages/NotFound";
 import StudentAssessmentPage from "./pages/StudentAssessmentPage";
 import StudentSessionPage from "./pages/StudentSessionPage";
+import RubricDashboard from "./pages/RubricDashboard";
 
 const queryClient = new QueryClient();
 
@@ -48,6 +49,7 @@ const App = () => (
               <Route element={<ProtectedRoute />}>
                 <Route path="/" element={<Index />} />
                 <Route path="/builder" element={<Builder />} />
+                <Route path="/rubric/:rubricId" element={<RubricDashboard />} />
                 <Route path="/grade/:rubricId" element={<Grade />} />
                 <Route path="/grade/:rubricId/horizontal" element={<HorizontalGrade />} />
                 <Route path="/results" element={<Results />} />

@@ -17,10 +17,11 @@ import { GradedStudentsTable } from '@/components/GradedStudentsTable';
 import { cn } from '@/lib/utils';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { CellFeedback, GradedStudent, Rubric, Threshold, StudentGradingData } from '@/types/rubric';
+import { CellFeedback, GradedStudent, Rubric, Threshold, StudentGradingData, ClassSession } from '@/types/rubric';
 import { exportGradingSession, GradingSessionState } from '@/lib/excel-state';
 import { useToast } from '@/components/ui/use-toast';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useResultsStore } from '@/hooks/useResultsStore';
 import { PrivacyKeyDialog } from '@/components/PrivacyKeyDialog';
 import { Lock, Cloud, Save, RotateCw, Edit, TriangleAlert, Share2, Copy } from 'lucide-react';
@@ -137,7 +138,55 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
 
 
   // State for student names (prop OR hydrated from session)
+  // State for student names (prop OR hydrated from session)
   const [activeStudentNames, setActiveStudentNames] = useState<string[]>(initialStudentNames);
+  const [availableSessions, setAvailableSessions] = useState<ClassSession[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState<string>('all');
+
+  useEffect(() => {
+    // Fetch sessions for this rubric
+    const fetchSessions = async () => {
+      const { data } = await supabase
+        .from('grading_sessions')
+        .select('*')
+        .eq('rubric_id', rubric.id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+
+      if (data) {
+        setAvailableSessions(data as ClassSession[]);
+      }
+    };
+    fetchSessions();
+  }, [rubric.id]);
+
+  const handleSessionChange = async (sessionId: string) => {
+    setSelectedSessionId(sessionId);
+    if (sessionId === 'all') {
+      // Revert to initial or all?
+      // For now, rever to initial provided names if any, or just empty?
+      setActiveStudentNames(initialStudentNames);
+      return;
+    }
+
+    // Fetch students for this session
+    const { data } = await supabase
+      .from('session_students')
+      .select('student_name')
+      .eq('session_id', sessionId);
+
+    if (data) {
+      const names = data.map(d => d.student_name);
+      setActiveStudentNames(names);
+      // Also reset grading progress? 
+      // If we switch classes, we typically want to start grading that class.
+      // Resetting current indices seems appropriate.
+      setCurrentRowIndex(0);
+      setStudentOrder([]); // Will be rebuilt as we grade
+      setCurrentStudentIndex(0);
+      setCompletedStudentCount(0);
+    }
+  };
 
   useEffect(() => {
     // If props change (rare), update state
@@ -1005,15 +1054,37 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between relative">
-            <Button variant="ghost" onClick={() => navigate('/')} className="gap-2">
-              <ArrowLeft className="h-4 w-4" />
-              Back to Overview
-            </Button>
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" onClick={() => navigate('/')} className="gap-2">
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </Button>
+
+              {/* Class Selector */}
+              <div className="flex items-center gap-2 border-l pl-4">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <Select value={selectedSessionId} onValueChange={handleSessionChange}>
+                  <SelectTrigger className="w-[180px] h-8 text-xs">
+                    <SelectValue placeholder="All Students" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Students (Default)</SelectItem>
+                    {availableSessions.map(session => (
+                      <SelectItem key={session.id} value={session.id}>
+                        {session.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
             <div className="flex flex-col items-center">
               <h1 className="text-lg font-semibold truncate max-w-[200px] md:max-w-none">
-                {rubric.name} - Horizontal Grading
+                {rubric.name}
               </h1>
               <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                {/* Status Badges */}
                 {isGuest ? (
                   <span className="flex items-center gap-1 text-orange-600">
                     <Save className="h-3 w-3" />
@@ -1022,7 +1093,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
                 ) : privacyKey ? (
                   <>
                     <Lock className="h-3 w-3 text-green-600" />
-                    <span className="text-green-600">Encrypted & Synced</span>
+                    <span className="text-green-600">Encrypted</span>
                   </>
                 ) : (
                   <span onClick={() => setShowPrivacyDialog(true)} className="cursor-pointer hover:underline text-amber-600">
@@ -1030,22 +1101,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
                   </span>
                 )}
                 <span className="mx-1">•</span>
-                <span className="flex items-center gap-1">
-                  {hasUnsavedChanges ? (
-                    <span className="flex items-center gap-1 text-orange-500 animate-pulse">
-                      <RotateCw className="h-3 w-3" /> Saving...
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1 text-muted-foreground">
-                      <Check className="h-3 w-3" /> Saved
-                    </span>
-                  )}
-                </span>
-              </div>
-              <div className="flex items-center gap-4 mt-2">
-                <Badge variant="secondary" className="text-sm font-medium">
-                  Grading Phase
-                </Badge>
+                <span>{hasUnsavedChanges ? "Saving..." : "Saved"}</span>
               </div>
             </div>
 
@@ -1059,60 +1115,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
                     className="scale-75"
                   />
                 </div>
-                {autosaveEnabled && (
-                  <select
-                    className="text-xs bg-transparent border-none focus:ring-0 cursor-pointer"
-                    value={autosaveInterval}
-                    onChange={(e) => setAutosaveInterval(Number(e.target.value))}
-                  >
-                    <option value={30000}>30s</option>
-                    <option value={60000}>1m</option>
-                    <option value={120000}>2m</option>
-                    <option value={300000}>5m</option>
-                  </select>
-                )}
               </div>
-              <div className="h-4 w-[1px] bg-border mx-1" />
-
-              <Popover open={showSharePopover} onOpenChange={setShowSharePopover}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="gap-2 h-8 border-primary/20 hover:bg-primary/5 text-primary text-xs">
-                    <Share2 className="h-3 w-3" />
-                    Deel
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-80">
-                  <div className="space-y-4">
-                    <h4 className="font-medium leading-none">Deel Rubric</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Genereer een link voor studenten.
-                    </p>
-                    <div className="space-y-2">
-                      <Label>Klas naam</Label>
-                      <Input
-                        value={classToShare}
-                        onChange={(e) => setClassToShare(e.target.value)}
-                        placeholder="Bijv. H4A"
-                      />
-                    </div>
-                    {generatedLink ? (
-                      <div className="space-y-2">
-                        <Label>Link</Label>
-                        <div className="flex items-center gap-2">
-                          <Input value={generatedLink} readOnly className="text-xs" />
-                          <Button size="icon" variant="ghost" onClick={copyLinkToClipboard}>
-                            <Copy className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <Button className="w-full" onClick={handleGenerateLink} disabled={!classToShare.trim()}>
-                        Genereer
-                      </Button>
-                    )}
-                  </div>
-                </PopoverContent>
-              </Popover>
 
               <div className="h-4 w-[1px] bg-border mx-1" />
               <Button variant="outline" onClick={handleSaveAndExit} className="gap-2 h-8 border-primary/20 hover:bg-primary/5 text-primary text-xs">
@@ -1122,8 +1125,6 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
             </div>
           </div>
         </div>
-        {/* Timer Progress Bar - Removed */}
-        {/* Overall Progress */}
         <Progress value={progressPercent} className="h-1 w-full rounded-none opacity-50" />
       </header>
 

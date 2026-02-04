@@ -195,10 +195,10 @@ export function RubricList() {
                     <Button
                       variant="outline"
                       className="flex-1 gap-2"
-                      onClick={() => handleEdit(rubric)}
+                      onClick={() => navigate(`/rubric/${rubric.id}`)}
                     >
                       <Edit className="h-4 w-4" />
-                      Edit
+                      Manage
                     </Button>
                     <Button
                       className="flex-1 gap-2"
