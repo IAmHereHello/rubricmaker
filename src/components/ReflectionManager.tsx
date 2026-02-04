@@ -32,7 +32,7 @@ export default function ReflectionManager({ rubricId }: ReflectionManagerProps) 
         try {
             setLoading(true);
             const { data, error } = await supabase
-                .from('grading_sessions')
+                .from('class_sessions')
                 .select(`
           *,
           students:session_students(count)
@@ -72,7 +72,7 @@ export default function ReflectionManager({ rubricId }: ReflectionManagerProps) 
 
             // 1. Create Session
             const { data: sessionData, error: sessionError } = await supabase
-                .from('grading_sessions')
+                .from('class_sessions')
                 .insert({
                     rubric_id: rubricId,
                     name: newName,
@@ -86,7 +86,7 @@ export default function ReflectionManager({ rubricId }: ReflectionManagerProps) 
 
             // 2. Add Students
             const studentRows = students.map(name => ({
-                session_id: sessionData.id,
+                class_session_id: sessionData.id,
                 name: name,
                 status: 'pending'
             }));
@@ -112,7 +112,7 @@ export default function ReflectionManager({ rubricId }: ReflectionManagerProps) 
     const toggleActive = async (session: ClassSession) => {
         try {
             const { error } = await supabase
-                .from('grading_sessions')
+                .from('class_sessions')
                 .update({ is_active: !session.is_active })
                 .eq('id', session.id);
 
@@ -129,7 +129,7 @@ export default function ReflectionManager({ rubricId }: ReflectionManagerProps) 
     const deleteSession = async (id: string) => {
         if (!confirm("Weet je zeker dat je deze klas en alle resultaten wilt verwijderen?")) return;
         try {
-            const { error } = await supabase.from('grading_sessions').delete().eq('id', id);
+            const { error } = await supabase.from('class_sessions').delete().eq('id', id);
             if (error) throw error;
             setSessions(prev => prev.filter(s => s.id !== id));
             toast({ title: "Verwijderd", description: "De sessie is verwijderd." });
