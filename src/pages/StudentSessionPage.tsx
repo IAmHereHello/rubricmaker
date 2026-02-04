@@ -28,7 +28,7 @@ export default function StudentSessionPage() {
             setLoading(true);
             // 1. Get Session
             const { data: sessionData, error: sessionError } = await supabase
-                .from('grading_sessions')
+                .from('class_sessions')
                 .select('*')
                 .eq('id', sessionId)
                 .single();
@@ -36,12 +36,9 @@ export default function StudentSessionPage() {
             if (sessionError) throw sessionError;
             setSession(sessionData as unknown as ClassSession);
 
-            // 2. Get Roster (Assuming we can select directly from session_students)
+            // 2. Get Roster via RPC
             const { data: rosterData, error: rosterError } = await supabase
-                .from('session_students')
-                .select('*')
-                .eq('session_id', sessionId)
-                .order('name');
+                .rpc('get_session_roster', { p_session_id: sessionId });
 
             if (rosterError) throw rosterError;
             setRoster(rosterData as SessionStudent[]);
