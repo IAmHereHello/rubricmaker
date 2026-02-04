@@ -57,6 +57,7 @@ export interface GradedStudent {
   extraConditionsMet?: { [goalName: string]: { [conditionIndex: number]: boolean } }; // For mastery exams
   selectedRoute?: 'orange' | 'yellow' | 'blue'; // Learning Route
   rubricVersion?: 'A' | 'B'; // Test Version
+  is_self_assessment?: boolean; // Origin flag
 }
 
 export type RubricType = 'assignment' | 'exam';
@@ -123,6 +124,7 @@ export interface StudentGradingData {
   selectedRoute?: 'orange' | 'yellow' | 'blue';
   rubricVersion?: 'A' | 'B';
   notMadeRows?: { [rowId: string]: boolean }; // Track "Not Made" / "N.v.t." per question
+  is_self_assessment?: boolean;
 }
 
 export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;

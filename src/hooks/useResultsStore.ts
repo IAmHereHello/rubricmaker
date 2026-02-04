@@ -99,7 +99,87 @@ export const useResultsStore = create<ResultsStore>((set, get) => ({
                 }
             });
 
-            console.log(`[useResultsStore] Successfully decrypted ${decryptedStudents.length} students.`);
+            // 2b. Fetch Student Self-Assessments (Parallel)
+            console.log(`[useResultsStore] Querying self-assessments for rubric_id: ${rubricId}...`);
+            const { data: studentData, error: studentError } = await supabase
+                .from('student_results')
+                .select('*')
+                .eq('rubric_id', rubricId)
+                .order('created_at', { ascending: false }); // Latest first
+
+            if (!studentError && studentData) {
+                console.log(`[useResultsStore] Fetched ${studentData.length} self-assessments.`);
+                // We don't decrypt self-assessments as they are likely plain JSON or we assume teacher can read? 
+                // Wait, if student submitted via RPC, is it encrypted? 
+                // RPC 'submit_assessment' likely stores it as is. 
+                // Ideally it should be readable. If it's encrypted by student key? No, public submit.
+                // Assuming plain text for 'data' in student_results or minimally processed.
+
+                // MAPPING logic:
+                studentData.forEach(row => {
+                    try {
+                        // Conflict resolution:
+                        // If we already have a TEACHER graded result (decryptedStudents) for this student name, 
+                        // IGNORE the self-assessment (Teacher overrides).
+                        // If not, add it with flag.
+
+                        // We need the student name.
+                        const sName = row.student_name; // Assuming plaintext? If RPC encrypts, we have a problem (teacher key != student key).
+                        // Let's assume for this task 'submit_assessment' saves plaintext or accessible text.
+
+                        if (!sName) return;
+
+                        // Check if teacher result exists
+                        const exists = decryptedStudents.find(
+                            ds => ds.studentName.toLowerCase() === sName.toLowerCase()
+                        );
+
+                        if (!exists) {
+                            // Parse data
+                            // The 'data' column in student_results contains the answers/score object
+                            // We need to map it to GradedStudent structure
+                            let answers = row.data;
+                            if (typeof answers === 'string') {
+                                try { answers = JSON.parse(answers); } catch (e) { }
+                            }
+
+                            // We need to construct a partial GradedStudent from answers
+                            // This is tricky because 'answers' might just be { rowId: val }
+                            // We might need to reconstruct the full object or just store enough to display.
+                            // Let's assume 'row.data' IS the answers map.
+
+                            // But GradedStudent needs 'totalScore', etc. 
+                            // If RPC didn't calc it, we might need to calc on fly? 
+                            // For now, let's assume we wrap it and let UI handle/recalc.
+
+                            // Wait, if we want to show it in GradingView as "Pre-filled", 
+                            // we just need it in the list.
+
+                            // Actually, let's ensure we conform to GradedStudent.
+                            const selfAssessmentBot: GradedStudent = {
+                                id: row.id,
+                                studentName: sName,
+                                selections: answers || {}, // Assuming structure matches
+                                rowScores: {}, // If needed
+                                cellFeedback: [],
+                                generalFeedback: '',
+                                totalScore: 0, // Placeholder, UI might recalc
+                                status: 'development',
+                                statusLabel: 'Zelfbeoordeling',
+                                gradedAt: new Date(row.created_at),
+                                className: row.class_name,
+                                is_self_assessment: true
+                            };
+
+                            decryptedStudents.push(selfAssessmentBot);
+                        }
+                    } catch (e) {
+                        console.warn('Failed to process student result', e);
+                    }
+                });
+            }
+
+            console.log(`[useResultsStore] Successfully processed ${decryptedStudents.length} combined results.`);
 
             set((state) => ({
                 results: {

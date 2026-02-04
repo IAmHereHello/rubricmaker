@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,7 +23,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { Switch } from '@/components/ui/switch';
 import { useResultsStore } from '@/hooks/useResultsStore';
 import { PrivacyKeyDialog } from '@/components/PrivacyKeyDialog';
-import { Lock, Cloud, Save, RotateCw, Edit, TriangleAlert } from 'lucide-react';
+import { Lock, Cloud, Save, RotateCw, Edit, TriangleAlert, Share2, Copy } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSessionStore } from '@/hooks/useSessionStore';
 import { generatePdf } from '@/lib/pdf-generator';
@@ -108,6 +108,29 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
 
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
 
+  // Share Class State
+  const [classToShare, setClassToShare] = useState('');
+  const [generatedLink, setGeneratedLink] = useState('');
+  const [showSharePopover, setShowSharePopover] = useState(false);
+
+  const handleGenerateLink = () => {
+    if (!classToShare.trim()) return;
+    const baseUrl = window.location.origin;
+    const link = `${baseUrl}/student/${rubric.id}?class=${encodeURIComponent(classToShare)}`;
+    setGeneratedLink(link);
+  };
+
+  const copyLinkToClipboard = () => {
+    if (!generatedLink) return;
+    navigator.clipboard.writeText(generatedLink);
+    toast({
+      title: "Link Gekopieerd",
+      description: "De link is naar je klembord gekopieerd.",
+    });
+  };
+
+
+
   // State for UX Refinements
   // Timer removed per request
 
@@ -147,7 +170,51 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
         } else {
           console.log(`[HorizontalGradingView] Effect triggered for rubric ${rubric.id}. Key Present: ${!!privacyKey}`);
           if (privacyKey) {
-            fetchResults(rubric.id);
+            fetchResults(rubric.id).then(() => {
+              // HYDRATION LOGIC:
+              // Once results are fetched (merged self-assessments included), we need to update studentsData
+              // IF we are not in the middle of a session? 
+              // Or selectively add students who are not yet in the session?
+
+              const results = useResultsStore.getState().getResultsByRubric(rubric.id);
+              // We need to merge these into studentsData
+              setStudentsData(prev => {
+                const newMap = new Map(prev);
+                let hasUpdates = false;
+
+                results.forEach(r => {
+                  if (!newMap.has(r.studentName)) {
+                    // Convert GradedStudent to StudentGradingData
+                    const newData: StudentGradingData = {
+                      studentName: r.studentName,
+                      selections: r.selections || {},
+                      cellFeedback: r.cellFeedback || [],
+                      generalFeedback: r.generalFeedback || '',
+                      calculationCorrect: r.calculationCorrect || {},
+                      rowScores: r.rowScores,
+                      extraConditionsMet: r.extraConditionsMet,
+                      selectedRoute: r.selectedRoute,
+                      rubricVersion: r.rubricVersion,
+                      is_self_assessment: r.is_self_assessment // IMPORTANT
+                    };
+                    newMap.set(r.studentName, newData);
+                    hasUpdates = true;
+                  }
+                });
+
+                return hasUpdates ? newMap : prev;
+              });
+
+              // ALSO: We need to ensure these new students are in 'availableNames' or 'studentOrder' if valid?
+              // If they are self-assessments, they should probably be added to 'activeStudentNames' if not there?
+              if (results.length > 0) {
+                const names = results.map(r => r.studentName);
+                setActiveStudentNames(prev => {
+                  const combined = Array.from(new Set([...prev, ...names]));
+                  return combined.length !== prev.length ? combined : prev;
+                });
+              }
+            });
           } else {
             setShowPrivacyDialog(true);
           }
@@ -1006,6 +1073,48 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
                 )}
               </div>
               <div className="h-4 w-[1px] bg-border mx-1" />
+
+              <Popover open={showSharePopover} onOpenChange={setShowSharePopover}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="gap-2 h-8 border-primary/20 hover:bg-primary/5 text-primary text-xs">
+                    <Share2 className="h-3 w-3" />
+                    Deel
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80">
+                  <div className="space-y-4">
+                    <h4 className="font-medium leading-none">Deel Rubric</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Genereer een link voor studenten.
+                    </p>
+                    <div className="space-y-2">
+                      <Label>Klas naam</Label>
+                      <Input
+                        value={classToShare}
+                        onChange={(e) => setClassToShare(e.target.value)}
+                        placeholder="Bijv. H4A"
+                      />
+                    </div>
+                    {generatedLink ? (
+                      <div className="space-y-2">
+                        <Label>Link</Label>
+                        <div className="flex items-center gap-2">
+                          <Input value={generatedLink} readOnly className="text-xs" />
+                          <Button size="icon" variant="ghost" onClick={copyLinkToClipboard}>
+                            <Copy className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Button className="w-full" onClick={handleGenerateLink} disabled={!classToShare.trim()}>
+                        Genereer
+                      </Button>
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              <div className="h-4 w-[1px] bg-border mx-1" />
               <Button variant="outline" onClick={handleSaveAndExit} className="gap-2 h-8 border-primary/20 hover:bg-primary/5 text-primary text-xs">
                 <Download className="h-3 w-3" />
                 Save & Exit
@@ -1140,8 +1249,22 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
         <Card className="shadow-soft lg:col-span-2">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              {isFirstRow ? 'Grade Student' : `Grading: ${currentStudentName}`}
+              {(isFirstRow || (!isFirstRow && currentStudentData.is_self_assessment)) && (
+                <div className="flex items-center gap-2">
+                  {isFirstRow ? 'Grade Student' : `Grading: ${currentStudentName}`}
+                  {currentStudentData.is_self_assessment && (
+                    <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200">
+                      🏷️ Zelfbeoordeling
+                    </Badge>
+                  )}
+                </div>
+              )}
+              {!isFirstRow && !currentStudentData.is_self_assessment && (
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  Grading: {currentStudentName}
+                </div>
+              )}
             </CardTitle>
             {!isFirstRow && (
               <CardDescription>
