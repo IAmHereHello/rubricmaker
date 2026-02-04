@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, CheckCircle2 } from 'lucide-react';
+import { Loader2, CheckCircle2, Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -27,6 +27,8 @@ export default function StudentAssessmentPage() {
   const [studentName, setStudentName] = useState('');
   const [className, setClassName] = useState(urlClass || '');
   const [answers, setAnswers] = useState<Record<string, any>>({});
+  // Track checklist progress properly so it survives manual override
+  const [checklistProgress, setChecklistProgress] = useState<Record<string, Record<string, boolean>>>({});
 
   const { toast } = useToast();
 
@@ -82,7 +84,7 @@ export default function StudentAssessmentPage() {
       // Validation if needed
 
       const { error } = await supabase.rpc('submit_assessment', {
-        p_rubric_id: rubricId,
+        p_rubric_id: rubric?.id,
         p_student_name: studentName,
         p_class_name: className,
         p_data: answers
@@ -118,47 +120,74 @@ export default function StudentAssessmentPage() {
             </CardHeader>
             <CardContent>
               {isMastery ? (
-                // Mastery / Checkbox Style
-                <div className="space-y-3">
+                // Mastery / Checkbox Style with Override Buttons
+                <div className="space-y-4">
+                  {/* Override Buttons */}
+                  <div className="flex space-x-3 mb-4">
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "flex-1 border-2",
+                        answers[row.id] === 1
+                          ? "bg-green-100 border-green-500 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:border-green-500 dark:text-green-400"
+                          : "border-muted hover:border-green-300"
+                      )}
+                      onClick={() => setAnswers(prev => ({ ...prev, [row.id]: 1 }))}
+                    >
+                      <Check className="mr-2 h-4 w-4" />
+                      Goed
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "flex-1 border-2",
+                        answers[row.id] === 0
+                          ? "bg-red-100 border-red-500 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:border-red-500 dark:text-red-400"
+                          : "border-muted hover:border-red-300"
+                      )}
+                      onClick={() => setAnswers(prev => ({ ...prev, [row.id]: 0 }))}
+                    >
+                      <X className="mr-2 h-4 w-4" />
+                      Fout
+                    </Button>
+                  </div>
+
                   {row.requirements && row.requirements.length > 0 ? (
-                    row.requirements.map((req, idx) => (
-                      <div key={idx} className="flex items-start space-x-3 p-2 rounded hover:bg-muted/50 transition-colors">
-                        <Checkbox
-                          id={`row-${row.id}-req-${idx}`}
-                          checked={answers[row.id]?.[idx] === true}
-                          onCheckedChange={(checked) => {
-                            setAnswers(prev => {
-                              const currentMap = prev[row.id] || {};
-                              return {
-                                ...prev,
-                                [row.id]: { ...currentMap, [idx]: checked === true }
+                    <div className="space-y-3 pt-2 border-t">
+                      <div className="text-sm font-medium text-muted-foreground mb-2">Criteria:</div>
+                      {row.requirements.map((req, idx) => (
+                        <div key={idx} className="flex items-start space-x-3 p-2 rounded hover:bg-muted/50 transition-colors">
+                          <Checkbox
+                            id={`row-${row.id}-req-${idx}`}
+                            checked={checklistProgress[row.id]?.[idx] === true}
+                            onCheckedChange={(checked) => {
+                              // Update visual progress
+                              const newProgress = {
+                                ...checklistProgress,
+                                [row.id]: {
+                                  ...(checklistProgress[row.id] || {}),
+                                  [idx]: checked === true
+                                }
                               };
-                            });
-                          }}
-                        />
-                        <label
-                          htmlFor={`row-${row.id}-req-${idx}`}
-                          className="text-sm leading-snug cursor-pointer font-normal mt-0.5"
-                        >
-                          {req}
-                        </label>
-                      </div>
-                    ))
-                  ) : (
-                    // Fallback if no requirements definition found for this row
-                    <div className="flex items-start space-x-3">
-                      <Checkbox
-                        id={`row-${row.id}`}
-                        checked={answers[row.id] === true}
-                        onCheckedChange={(checked) =>
-                          setAnswers(prev => ({ ...prev, [row.id]: checked === true }))
-                        }
-                      />
-                      <label htmlFor={`row-${row.id}`} className="text-sm cursor-pointer ml-2">
-                        Ik beheers dit onderdeel.
-                      </label>
+                              setChecklistProgress(newProgress);
+
+                              // Also set this as the answer, overriding any manual 1/0
+                              setAnswers(prev => ({
+                                ...prev,
+                                [row.id]: newProgress[row.id]
+                              }));
+                            }}
+                          />
+                          <label
+                            htmlFor={`row-${row.id}-req-${idx}`}
+                            className="text-sm leading-snug cursor-pointer font-normal mt-0.5"
+                          >
+                            {req}
+                          </label>
+                        </div>
+                      ))}
                     </div>
-                  )}
+                  ) : null}
                 </div>
               ) : (
                 // Standard / Radio Style

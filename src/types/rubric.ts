@@ -66,6 +66,7 @@ export interface Rubric {
   id: string;
   user_id?: string;
   name: string;
+  title?: string; // RPC sometimes returns title
   description?: string;
   type: RubricType;
   gradingMethod?: 'points' | 'mastery'; // For exams: 'points' is default
