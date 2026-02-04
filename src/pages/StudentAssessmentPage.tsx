@@ -43,16 +43,10 @@ export default function StudentAssessmentPage() {
 
         if (error) throw error;
 
-        if (data && data.length > 0) {
-          // RPC returns an array, but we expect one rubric. 
-          // The structure might need adaptation based on exact RPC return type. 
-          // Assuming data[0] is the rubric object or fields.
-          // However, if RPC returns the full JSONB in 'data' field:
-          const r = data[0];
-          // If 'data' column is the JSON content, we parse/use it.
-          // Check if 'data' property exists on the returned object to avoid confusion with the RPC 'data' variable.
-          const rubricData = r.data || r;
-          setRubric(rubricData as Rubric);
+        if (data) {
+          // RPC returns the JSONB object directly (based on RETURNS JSONB)
+          // It structure is { id, title, gradingMethod, rows: [...] }
+          setRubric(data as Rubric);
         }
       } catch (err) {
         console.error('Failed to load rubric', err);
