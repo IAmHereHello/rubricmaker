@@ -55,6 +55,7 @@ export interface GradedStudent {
   className?: string; // Class name for grouping
   rowScores?: { [rowId: string]: number }; // For exams: Explicit point value given per row/question
   extraConditionsMet?: { [goalName: string]: { [conditionIndex: number]: boolean } }; // For mastery exams
+  metRequirements?: { [rowId: string]: string[] }; // For mastery rubrics (checklist items)
   selectedRoute?: 'orange' | 'yellow' | 'blue'; // Learning Route
   rubricVersion?: 'A' | 'B'; // Test Version
   is_self_assessment?: boolean; // Origin flag
@@ -122,6 +123,7 @@ export interface StudentGradingData {
   generalFeedback: string;
   rowScores?: { [rowId: string]: number }; // For exams
   extraConditionsMet?: { [goalName: string]: { [conditionIndex: number]: boolean } }; // For mastery exams
+  metRequirements?: { [rowId: string]: string[] }; // For mastery rubrics (checklist items)
   selectedRoute?: 'orange' | 'yellow' | 'blue';
   rubricVersion?: 'A' | 'B';
   notMadeRows?: { [rowId: string]: boolean }; // Track "Not Made" / "N.v.t." per question

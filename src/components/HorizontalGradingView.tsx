@@ -242,6 +242,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
                       calculationCorrect: r.calculationCorrect || {},
                       rowScores: r.rowScores,
                       extraConditionsMet: r.extraConditionsMet,
+                      metRequirements: r.metRequirements,
                       selectedRoute: r.selectedRoute,
                       rubricVersion: r.rubricVersion,
                       is_self_assessment: r.is_self_assessment // IMPORTANT
@@ -606,6 +607,16 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
         return;
       }
 
+      // Mastery Mode (Non-Exam)
+      if (isMastery) {
+        // Use rowScores which are calculated by the UI (0 or 1)
+        const score = data.rowScores?.[row.id] || 0;
+        rowScores[row.id] = score;
+        total += score;
+        return;
+      }
+
+
       // Assignment Mode
       const selectedColumnId = data.selections[row.id];
 
@@ -888,6 +899,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
           statusLabel: status?.label || 'In Ontwikkeling',
           gradedAt: new Date(),
           extraConditionsMet: data.extraConditionsMet,
+          metRequirements: data.metRequirements,
           selectedRoute: data.selectedRoute,
           rubricVersion: data.rubricVersion
         };
@@ -1344,31 +1356,44 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
 
                     <div className="space-y-3">
                       {currentRow.requirements.map((req, idx) => {
-                        const isChecked = currentStudentData.extraConditionsMet?.[currentRow.id]?.[idx] || false;
+                        // Check if this specific requirement string is in the metRequirements array
+                        const isChecked = currentStudentData.metRequirements?.[currentRow.id]?.includes(req) || false;
+
                         return (
                           <div key={idx} className="flex items-start gap-3 p-3 rounded-md hover:bg-accent/50 transition-colors border border-transparent hover:border-accent">
                             <Checkbox
                               id={`req-${idx}`}
                               checked={isChecked}
                               onCheckedChange={(checked) => {
-                                // 1. Update Checkbox State
-                                const currentMap = currentStudentData.extraConditionsMet?.[currentRow.id] || {};
-                                const newMap = { ...currentMap, [idx]: !!checked };
+                                // 1. Update Checkbox State (List of Strings)
+                                const currentReqs = currentStudentData.metRequirements?.[currentRow.id] || [];
+                                let newReqs: string[];
 
-                                const newExtraConditionsMet = {
-                                  ...currentStudentData.extraConditionsMet,
-                                  [currentRow.id]: newMap
+                                if (checked) {
+                                  // Add if not present
+                                  newReqs = [...currentReqs];
+                                  if (!newReqs.includes(req)) newReqs.push(req);
+                                } else {
+                                  // Remove if present
+                                  newReqs = currentReqs.filter(r => r !== req);
+                                }
+
+                                const newMetRequirements = {
+                                  ...currentStudentData.metRequirements,
+                                  [currentRow.id]: newReqs
                                 };
 
                                 // 2. Calculate New Score
-                                const checkedCount = Object.values(newMap).filter(Boolean).length;
+                                // For Mastery, score is 1 (Passed) or 0 (Not Passed) based on minRequirements
+                                const checkedCount = newReqs.length;
                                 const minReq = currentRow.minRequirements || 1;
                                 const isPass = checkedCount >= minReq;
                                 const newScore = isPass ? 1 : 0;
+
                                 const newRowScores = { ...currentStudentData.rowScores, [currentRow.id]: newScore };
 
                                 updateStudentData(currentStudentName, {
-                                  extraConditionsMet: newExtraConditionsMet,
+                                  metRequirements: newMetRequirements,
                                   rowScores: newRowScores
                                 });
                               }}
