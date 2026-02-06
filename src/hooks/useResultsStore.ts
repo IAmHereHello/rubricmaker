@@ -155,15 +155,45 @@ export const useResultsStore = create<ResultsStore>((set, get) => ({
                             // Wait, if we want to show it in GradingView as "Pre-filled", 
                             // we just need it in the list.
 
-                            // Actually, let's ensure we conform to GradedStudent.
+                            // Split answers into selections (standard) and extraConditionsMet (mastery)
+                            const selections: { [rowId: string]: string } = {};
+                            const extraConditionsMet: { [rowId: string]: { [idx: number]: boolean } } = {};
+                            const rowScores: { [rowId: string]: number } = {};
+
+                            if (answers && typeof answers === 'object') {
+                                Object.entries(answers).forEach(([key, val]) => {
+                                    if (typeof val === 'object' && val !== null) {
+                                        // It's mastery data { "0": true, "1": false }
+                                        // We need to cast keys to numbers for strict typing if needed, 
+                                        // but JS object works.
+                                        // However, the type definition expects { [conditionIndex: number]: boolean }
+                                        // but keys in JSON are strings.
+
+                                        // Map string keys "0" to number 0
+                                        const numericMap: { [idx: number]: boolean } = {};
+                                        Object.entries(val).forEach(([k, v]) => {
+                                            numericMap[parseInt(k)] = v as boolean;
+                                        });
+                                        extraConditionsMet[key] = numericMap;
+                                    } else if (typeof val === 'number') {
+                                        // It could be manual score?
+                                        rowScores[key] = val;
+                                    } else {
+                                        // It's a selection ID (string)
+                                        selections[key] = String(val);
+                                    }
+                                });
+                            }
+
                             const selfAssessmentBot: GradedStudent = {
                                 id: row.id,
                                 studentName: sName,
-                                selections: answers || {}, // Assuming structure matches
-                                rowScores: {}, // If needed
+                                selections: selections,
+                                rowScores: rowScores,
+                                extraConditionsMet: extraConditionsMet,
                                 cellFeedback: [],
                                 generalFeedback: '',
-                                totalScore: 0, // Placeholder, UI might recalc
+                                totalScore: 0, // Placeholder
                                 status: 'development',
                                 statusLabel: 'Zelfbeoordeling',
                                 gradedAt: new Date(row.created_at),
