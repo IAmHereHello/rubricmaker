@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 export default function RubricDashboard() {
     const { rubricId } = useParams();
     const navigate = useNavigate();
-    const { getRubricById } = useRubricStore();
+    const { getRubricById, setCurrentRubric } = useRubricStore();
     const rubric = getRubricById(rubricId || '');
 
     if (!rubric) {
@@ -67,7 +67,10 @@ export default function RubricDashboard() {
                                 <CardDescription>Launch the builder to modify criteria, points, and threshold settings.</CardDescription>
                             </CardHeader>
                             <CardContent>
-                                <Button onClick={() => navigate('/builder')} className="gap-2">
+                                <Button onClick={() => {
+                                    setCurrentRubric(rubric);
+                                    navigate('/builder');
+                                }} className="gap-2">
                                     <Edit className="h-4 w-4" />
                                     Open Rubric Builder
                                 </Button>
