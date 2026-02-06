@@ -1345,83 +1345,126 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
 
               <div className="w-full max-w-2xl space-y-4">
                 {/* Main Input Component or Mastery Checklist */}
-                {(isMastery && currentRow.requirements && currentRow.requirements.length > 0) ? (
+                {isMastery ? (
                   <div className="bg-card border rounded-lg p-6 space-y-6 shadow-sm">
-                    <div className="text-center space-y-1 mb-4">
-                      <h4 className="font-medium text-lg">Beoordelingscriteria</h4>
-                      <p className="text-sm text-muted-foreground">
-                        Minimaal {currentRow.minRequirements || 1} van de {currentRow.requirements.length} punten vereist.
-                      </p>
+                    {/* Pass/Fail Buttons */}
+                    <div className="flex justify-center gap-4">
+                      <Button
+                        variant={currentStudentData.rowScores?.[currentRow.id] === 1 ? "default" : "outline"}
+                        className={cn(
+                          "gap-2 px-6 py-3 text-lg font-semibold transition-all",
+                          currentStudentData.rowScores?.[currentRow.id] === 1
+                            ? "bg-green-600 hover:bg-green-700 text-white border-green-600"
+                            : "hover:bg-green-50 hover:border-green-300"
+                        )}
+                        onClick={() => {
+                          updateStudentData(currentStudentName, {
+                            rowScores: { ...currentStudentData.rowScores, [currentRow.id]: 1 }
+                          });
+                        }}
+                      >
+                        ✅ Goed
+                      </Button>
+                      <Button
+                        variant={currentStudentData.rowScores?.[currentRow.id] === 0 ? "default" : "outline"}
+                        className={cn(
+                          "gap-2 px-6 py-3 text-lg font-semibold transition-all",
+                          currentStudentData.rowScores?.[currentRow.id] === 0
+                            ? "bg-red-600 hover:bg-red-700 text-white border-red-600"
+                            : "hover:bg-red-50 hover:border-red-300"
+                        )}
+                        onClick={() => {
+                          updateStudentData(currentStudentName, {
+                            rowScores: { ...currentStudentData.rowScores, [currentRow.id]: 0 }
+                          });
+                        }}
+                      >
+                        ❌ Fout
+                      </Button>
                     </div>
 
-                    <div className="space-y-3">
-                      {currentRow.requirements.map((req, idx) => {
-                        // Check if this specific requirement string is in the metRequirements array
-                        const isChecked = currentStudentData.metRequirements?.[currentRow.id]?.includes(req) || false;
+                    {/* Requirements Checklist (only if requirements exist) */}
+                    {currentRow.requirements && currentRow.requirements.length > 0 && (
+                      <>
+                        <div className="text-center space-y-1 pt-4 border-t">
+                          <h4 className="font-medium text-lg">Beoordelingscriteria</h4>
+                          <p className="text-sm text-muted-foreground">
+                            {currentRow.minRequirements
+                              ? `Benodigd: ${currentRow.minRequirements} van ${currentRow.requirements.length}`
+                              : `Minimaal 1 van de ${currentRow.requirements.length} punten vereist.`}
+                          </p>
+                        </div>
 
-                        return (
-                          <div key={idx} className="flex items-start gap-3 p-3 rounded-md hover:bg-accent/50 transition-colors border border-transparent hover:border-accent">
-                            <Checkbox
-                              id={`req-${idx}`}
-                              checked={isChecked}
-                              onCheckedChange={(checked) => {
-                                // 1. Update Checkbox State (List of Strings)
-                                const currentReqs = currentStudentData.metRequirements?.[currentRow.id] || [];
-                                let newReqs: string[];
+                        <div className="space-y-3">
+                          {currentRow.requirements.map((req, idx) => {
+                            const isChecked = currentStudentData.metRequirements?.[currentRow.id]?.includes(req) || false;
 
-                                if (checked) {
-                                  // Add if not present
-                                  newReqs = [...currentReqs];
-                                  if (!newReqs.includes(req)) newReqs.push(req);
-                                } else {
-                                  // Remove if present
-                                  newReqs = currentReqs.filter(r => r !== req);
-                                }
+                            return (
+                              <div key={idx} className="flex items-start gap-3 p-3 rounded-md hover:bg-accent/50 transition-colors border border-transparent hover:border-accent">
+                                <Checkbox
+                                  id={`req-${idx}`}
+                                  checked={isChecked}
+                                  onCheckedChange={(checked) => {
+                                    const currentReqs = currentStudentData.metRequirements?.[currentRow.id] || [];
+                                    let newReqs: string[];
 
-                                const newMetRequirements = {
-                                  ...currentStudentData.metRequirements,
-                                  [currentRow.id]: newReqs
-                                };
+                                    if (checked) {
+                                      newReqs = [...currentReqs];
+                                      if (!newReqs.includes(req)) newReqs.push(req);
+                                    } else {
+                                      newReqs = currentReqs.filter(r => r !== req);
+                                    }
 
-                                // 2. Calculate New Score
-                                // For Mastery, score is 1 (Passed) or 0 (Not Passed) based on minRequirements
-                                const checkedCount = newReqs.length;
-                                const minReq = currentRow.minRequirements || 1;
-                                const isPass = checkedCount >= minReq;
-                                const newScore = isPass ? 1 : 0;
+                                    const newMetRequirements = {
+                                      ...currentStudentData.metRequirements,
+                                      [currentRow.id]: newReqs
+                                    };
 
-                                const newRowScores = { ...currentStudentData.rowScores, [currentRow.id]: newScore };
+                                    // Auto-calculate score based on requirements met
+                                    const checkedCount = newReqs.length;
+                                    const minReq = currentRow.minRequirements || 1;
+                                    const isPass = checkedCount >= minReq;
+                                    const newScore = isPass ? 1 : 0;
 
-                                updateStudentData(currentStudentName, {
-                                  metRequirements: newMetRequirements,
-                                  rowScores: newRowScores
-                                });
-                              }}
-                              className="mt-1 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-                            />
-                            <div className="grid gap-1.5 leading-none">
-                              <Label
-                                htmlFor={`req-${idx}`}
-                                className={cn(
-                                  "text-sm font-medium leading-normal cursor-pointer",
-                                  isChecked ? "text-foreground" : "text-muted-foreground"
-                                )}
-                              >
-                                {req}
-                              </Label>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                                    updateStudentData(currentStudentName, {
+                                      metRequirements: newMetRequirements,
+                                      rowScores: { ...currentStudentData.rowScores, [currentRow.id]: newScore }
+                                    });
+                                  }}
+                                  className="mt-1 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                                />
+                                <div className="grid gap-1.5 leading-none">
+                                  <Label
+                                    htmlFor={`req-${idx}`}
+                                    className={cn(
+                                      "text-sm font-medium leading-normal cursor-pointer",
+                                      isChecked ? "text-foreground" : "text-muted-foreground"
+                                    )}
+                                  >
+                                    {req}
+                                  </Label>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
 
+                    {/* Result Summary */}
                     <div className={cn(
                       "mt-4 p-3 rounded-md text-center font-bold text-sm border transition-all duration-300",
-                      (currentStudentData.rowScores?.[currentRow.id] === 1)
+                      currentStudentData.rowScores?.[currentRow.id] === 1
                         ? "bg-green-100 text-green-700 border-green-200"
-                        : "bg-muted text-muted-foreground border-transparent"
+                        : currentStudentData.rowScores?.[currentRow.id] === 0
+                          ? "bg-red-100 text-red-700 border-red-200"
+                          : "bg-muted text-muted-foreground border-transparent"
                     )}>
-                      Resultaat: {(currentStudentData.rowScores?.[currentRow.id] === 1) ? "VOLDAAN (1 Punt)" : "Nog niet voldaan (0 Punten)"}
+                      {currentStudentData.rowScores?.[currentRow.id] === 1
+                        ? "✅ GOED (1 Punt)"
+                        : currentStudentData.rowScores?.[currentRow.id] === 0
+                          ? "❌ FOUT (0 Punten)"
+                          : "Nog niet beoordeeld"}
                     </div>
                   </div>
                 ) : (

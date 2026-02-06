@@ -15,10 +15,11 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { cn } from '@/lib/utils';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { CellFeedback, GradedStudent, Threshold } from '@/types/rubric';
+import { CellFeedback, GradedStudent, Threshold, Row } from '@/types/rubric';
 import { useResultsStore } from '@/hooks/useResultsStore';
 import { PrivacyKeyDialog } from '@/components/PrivacyKeyDialog';
 import { Lock, Cloud } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 
 
 export function GradingView() {
@@ -36,6 +37,7 @@ export function GradingView() {
   const [generalFeedback, setGeneralFeedback] = useState('');
   const [showSummary, setShowSummary] = useState(false);
   const [showPrivacyDialog, setShowPrivacyDialog] = useState(false);
+  const [metRequirements, setMetRequirements] = useState<{ [rowId: string]: string[] }>({});
 
   const [isGuest, setIsGuest] = useState(false);
 
@@ -74,6 +76,7 @@ export function GradingView() {
   }, [rubricId, privacyKey]);
 
   const isExam = rubric?.type === 'exam';
+  const isMastery = rubric?.gradingMethod === 'mastery';
 
   const handleCellClick = useCallback((rowId: string, columnId: string) => {
     setSelections((prev) => ({
@@ -134,6 +137,13 @@ export function GradingView() {
         rowScores[row.id] = score;
         total += score;
       });
+    } else if (isMastery) {
+      // Mastery Mode: Sum binary scores (0 or 1)
+      rubric.rows.forEach(row => {
+        const score = manualScores[row.id] || 0;
+        rowScores[row.id] = score;
+        total += score;
+      });
     } else {
       const scoringMode = rubric.scoringMode || 'discrete';
       rubric.rows.forEach((row) => {
@@ -164,7 +174,7 @@ export function GradingView() {
     }
 
     return { totalScore: total, rowScores };
-  }, [rubric, selections, manualScores, isExam]);
+  }, [rubric, selections, manualScores, isExam, isMastery]);
 
   // Check if any row has the lowest column selected (excluding bonus rows)
   const hasLowestColumnSelected = useMemo(() => {
@@ -341,7 +351,8 @@ export function GradingView() {
       id: Math.random().toString(36).substr(2, 9),
       studentName: studentName || 'Unknown',
       selections: { ...selections },
-      rowScores: isExam ? { ...manualScores } : undefined, // Save manual scores
+      rowScores: isExam || isMastery ? { ...manualScores } : undefined,
+      metRequirements: isMastery ? { ...metRequirements } : undefined,
       cellFeedback: [...cellFeedback],
       generalFeedback,
       totalScore,
@@ -366,6 +377,7 @@ export function GradingView() {
     setStudentName('');
     setSelections({});
     setManualScores({});
+    setMetRequirements({});
     setCellFeedback([]);
     setGeneralFeedback('');
   };
@@ -567,7 +579,82 @@ export function GradingView() {
                                 </div>
                               )}
                             </td>
-                            {isExam ? (
+                            {isMastery ? (
+                              <td className="border-b p-4" colSpan={rubric.columns.length}>
+                                <div className="flex flex-col gap-4">
+                                  {/* Pass/Fail Buttons */}
+                                  <div className="flex gap-4">
+                                    <Button
+                                      variant={manualScores[row.id] === 1 ? "default" : "outline"}
+                                      className={cn(
+                                        "gap-2 px-4 py-2 font-semibold transition-all",
+                                        manualScores[row.id] === 1
+                                          ? "bg-green-600 hover:bg-green-700 text-white border-green-600"
+                                          : "hover:bg-green-50 hover:border-green-300"
+                                      )}
+                                      onClick={() => setManualScores(prev => ({ ...prev, [row.id]: 1 }))}
+                                    >
+                                      ✅ Goed
+                                    </Button>
+                                    <Button
+                                      variant={manualScores[row.id] === 0 ? "default" : "outline"}
+                                      className={cn(
+                                        "gap-2 px-4 py-2 font-semibold transition-all",
+                                        manualScores[row.id] === 0
+                                          ? "bg-red-600 hover:bg-red-700 text-white border-red-600"
+                                          : "hover:bg-red-50 hover:border-red-300"
+                                      )}
+                                      onClick={() => setManualScores(prev => ({ ...prev, [row.id]: 0 }))}
+                                    >
+                                      ❌ Fout
+                                    </Button>
+                                  </div>
+
+                                  {/* Requirements Checklist */}
+                                  {row.requirements && row.requirements.length > 0 && (
+                                    <div className="border-t pt-3 space-y-2">
+                                      <p className="text-sm text-muted-foreground">
+                                        {row.minRequirements
+                                          ? `Benodigd: ${row.minRequirements} van ${row.requirements.length}`
+                                          : `Criteria:`}
+                                      </p>
+                                      <div className="space-y-2">
+                                        {row.requirements.map((req, idx) => {
+                                          const isChecked = metRequirements[row.id]?.includes(req) || false;
+                                          return (
+                                            <div key={idx} className="flex items-center gap-2">
+                                              <Checkbox
+                                                id={`req-${row.id}-${idx}`}
+                                                checked={isChecked}
+                                                onCheckedChange={(checked) => {
+                                                  const currentReqs = metRequirements[row.id] || [];
+                                                  let newReqs: string[];
+                                                  if (checked) {
+                                                    newReqs = [...currentReqs];
+                                                    if (!newReqs.includes(req)) newReqs.push(req);
+                                                  } else {
+                                                    newReqs = currentReqs.filter(r => r !== req);
+                                                  }
+                                                  setMetRequirements(prev => ({ ...prev, [row.id]: newReqs }));
+
+                                                  // Auto-update score based on requirements
+                                                  const minReq = row.minRequirements || 1;
+                                                  const newScore = newReqs.length >= minReq ? 1 : 0;
+                                                  setManualScores(prev => ({ ...prev, [row.id]: newScore }));
+                                                }}
+                                              />
+                                              <Label htmlFor={`req-${row.id}-${idx}`} className="text-sm cursor-pointer">
+                                                {req}
+                                              </Label>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            ) : isExam ? (
                               <td className="border-b p-4">
                                 <div className="flex flex-col gap-3">
                                   {row.description && (
