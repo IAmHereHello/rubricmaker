@@ -38,7 +38,8 @@ const MASTERY_EXAM_STEPS = [
 
 export function RubricBuilder() {
   const [currentStep, setCurrentStep] = useState<WizardStep>(1);
-  const { saveRubric, setCurrentRubric, updateCurrentRubric, currentRubric } = useRubricStore();
+  const [isSaving, setIsSaving] = useState(false);
+  const { saveRubric, setCurrentRubric, updateCurrentRubric, updateRow, currentRubric } = useRubricStore();
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -95,7 +96,16 @@ export function RubricBuilder() {
     currentRubric?.totalPossiblePoints
   ]);
 
-
+  // Force mastery rows to have maxPoints = 1
+  useEffect(() => {
+    if (!currentRubric || currentRubric.gradingMethod !== 'mastery') return;
+    const rows = currentRubric.rows || [];
+    rows.forEach(row => {
+      if (row.maxPoints !== 1) {
+        updateRow(row.id, { maxPoints: 1 });
+      }
+    });
+  }, [currentRubric?.gradingMethod, currentRubric?.rows?.length]);
 
 
   const handleComplete = async () => {
@@ -103,8 +113,15 @@ export function RubricBuilder() {
       navigate('/');
       return;
     }
-    await saveRubric();
-    navigate('/');
+    if (isSaving) return; // Prevent double-clicks
+    setIsSaving(true);
+    try {
+      await saveRubric();
+      navigate('/');
+    } catch (error) {
+      console.error('Error saving rubric:', error);
+      setIsSaving(false);
+    }
   };
 
   const handleCancel = () => {
@@ -203,6 +220,7 @@ export function RubricBuilder() {
                 <Step6Thresholds
                   onComplete={handleComplete}
                   onBack={() => setCurrentStep(5)}
+                  isSaving={isSaving}
                 />
               )}
             </>
@@ -228,11 +246,13 @@ export function RubricBuilder() {
                   <StepMasteryRules
                     onComplete={handleComplete}
                     onBack={() => setCurrentStep(2)}
+                    isSaving={isSaving}
                   />
                 ) : (
                   <Step6Thresholds
                     onComplete={handleComplete}
                     onBack={() => setCurrentStep(2)}
+                    isSaving={isSaving}
                   />
                 )
               )}

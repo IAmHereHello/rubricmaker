@@ -4,7 +4,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Gauge, ArrowLeft, Save, Sparkles, AlertTriangle } from 'lucide-react';
+import { Gauge, ArrowLeft, Save, Sparkles, AlertTriangle, Loader2 } from 'lucide-react';
 import { useRubricStore } from '@/hooks/useRubricStore';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Threshold } from '@/types/rubric';
@@ -12,9 +12,10 @@ import { Threshold } from '@/types/rubric';
 interface Step6ThresholdsProps {
   onComplete: () => void;
   onBack: () => void;
+  isSaving?: boolean;
 }
 
-export function Step6Thresholds({ onComplete, onBack }: Step6ThresholdsProps) {
+export function Step6Thresholds({ onComplete, onBack, isSaving = false }: Step6ThresholdsProps) {
   const { currentRubric, setThresholds } = useRubricStore();
   const [activeScale, setActiveScale] = useState<'default' | 'orange' | 'yellow' | 'blue'>('default');
 
@@ -238,9 +239,18 @@ export function Step6Thresholds({ onComplete, onBack }: Step6ThresholdsProps) {
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
-          <Button onClick={onComplete} className="flex-1">
-            <Save className="mr-2 h-4 w-4" />
-            Save Rubric
+          <Button onClick={onComplete} className="flex-1" disabled={isSaving}>
+            {isSaving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="mr-2 h-4 w-4" />
+                Save Rubric
+              </>
+            )}
           </Button>
         </div>
       </CardContent>

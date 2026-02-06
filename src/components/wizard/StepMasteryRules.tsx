@@ -6,16 +6,17 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
-import { ArrowLeft, ArrowRight, BookOpen, Plus, Trash2, CheckCircle2, Target } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpen, Plus, Trash2, CheckCircle2, Target, Loader2 } from 'lucide-react';
 import { useRubricStore } from '@/hooks/useRubricStore';
 import { LearningGoalRule } from '@/types/rubric';
 
 interface StepMasteryRulesProps {
     onComplete: () => void;
     onBack: () => void;
+    isSaving?: boolean;
 }
 
-export function StepMasteryRules({ onComplete, onBack }: StepMasteryRulesProps) {
+export function StepMasteryRules({ onComplete, onBack, isSaving = false }: StepMasteryRulesProps) {
     const { currentRubric, updateCurrentRubric } = useRubricStore();
     const [rules, setRules] = useState<LearningGoalRule[]>([]);
     const [masteryThresholds, setMasteryThresholds] = useState<{
@@ -213,10 +214,19 @@ export function StepMasteryRules({ onComplete, onBack }: StepMasteryRulesProps) 
                     <Button
                         onClick={handleSave}
                         className="flex-1 h-12 text-base"
-                        disabled={rules.length === 0}
+                        disabled={rules.length === 0 || isSaving}
                     >
-                        Save & Finish
-                        <ArrowRight className="ml-2 h-4 w-4" />
+                        {isSaving ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Saving...
+                            </>
+                        ) : (
+                            <>
+                                Save & Finish
+                                <ArrowRight className="ml-2 h-4 w-4" />
+                            </>
+                        )}
                     </Button>
                 </div>
             </CardContent>
