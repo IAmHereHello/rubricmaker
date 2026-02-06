@@ -306,6 +306,9 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
   const isExam = rubric.type === 'exam';
   const isMastery = rubric.gradingMethod === 'mastery';
 
+  // DEBUG: Log the grading method to help diagnose mastery UI visibility issues
+  console.log('[HorizontalGradingView] Grading Method:', rubric.gradingMethod, '| isMastery:', isMastery);
+
   // Time Tracking (Simplified)
   const [sessionStartTime] = useState<number>(Date.now());
   const [completedStudentCount, setCompletedStudentCount] = useState(0);

@@ -182,6 +182,11 @@ export const useRubricStore = create<RubricStore>()(
           gradedStudents: existingRubric?.gradedStudents || currentRubric.gradedStudents || [],
           createdAt: currentRubric.createdAt || now,
           updatedAt: now,
+          // Mastery-related fields
+          gradingMethod: currentRubric.gradingMethod,
+          learningGoalRules: currentRubric.learningGoalRules,
+          masteryThresholds: currentRubric.masteryThresholds,
+          gradingScales: currentRubric.gradingScales,
         };
       }
 

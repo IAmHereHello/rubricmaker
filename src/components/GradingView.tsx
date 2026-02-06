@@ -78,6 +78,9 @@ export function GradingView() {
   const isExam = rubric?.type === 'exam';
   const isMastery = rubric?.gradingMethod === 'mastery';
 
+  // DEBUG: Log the grading method to help diagnose mastery UI visibility issues
+  console.log('[GradingView] Grading Method:', rubric?.gradingMethod, '| isMastery:', isMastery);
+
   const handleCellClick = useCallback((rowId: string, columnId: string) => {
     setSelections((prev) => ({
       ...prev,
