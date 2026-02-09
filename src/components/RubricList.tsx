@@ -68,13 +68,13 @@ export function RubricList() {
     setShowGradingModal(true);
   };
 
-  const handleGradingModeSelect = (mode: 'vertical' | 'horizontal', studentNames?: string[], className?: string) => {
+  const handleGradingModeSelect = (mode: 'vertical' | 'horizontal') => {
     setShowGradingModal(false);
     if (selectedRubricId) {
       if (mode === 'vertical') {
         navigate(`/grade/${selectedRubricId}`);
       } else {
-        navigate(`/grade/${selectedRubricId}/horizontal`, { state: { studentNames, className } });
+        navigate(`/grade/${selectedRubricId}/horizontal`);
       }
     }
   };
