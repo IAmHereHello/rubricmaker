@@ -29,7 +29,12 @@ import { supabase } from '@/lib/supabase';
 import { useSessionStore } from '@/hooks/useSessionStore';
 import { generatePdf } from '@/lib/pdf-generator';
 import { GradingInput } from '@/components/GradingInput';
+import { GradingInput } from '@/components/GradingInput';
 import { useAuth } from '@/contexts/AuthContext';
+import { CreateClassDialog } from '@/components/CreateClassDialog';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Plus, ChevronsUpDown } from 'lucide-react';
+import { SessionStudent } from '@/types/rubric';
 
 interface HorizontalGradingViewProps {
   rubric: Rubric;
@@ -140,8 +145,11 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
   // State for student names (prop OR hydrated from session)
   // State for student names (prop OR hydrated from session)
   const [activeStudentNames, setActiveStudentNames] = useState<string[]>(initialStudentNames);
+  const [roster, setRoster] = useState<SessionStudent[]>([]); // Full roster with IDs
   const [availableSessions, setAvailableSessions] = useState<ClassSession[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string>('all');
+  const [showCreateClassDialog, setShowCreateClassDialog] = useState(false);
+  const [openCombobox, setOpenCombobox] = useState(false);
 
   useEffect(() => {
     // Fetch sessions for this rubric
@@ -163,29 +171,58 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
   const handleSessionChange = async (sessionId: string) => {
     setSelectedSessionId(sessionId);
     if (sessionId === 'all') {
-      // Revert to initial or all?
-      // For now, rever to initial provided names if any, or just empty?
       setActiveStudentNames(initialStudentNames);
+      setRoster([]);
       return;
     }
 
     // Fetch students for this session
     const { data } = await supabase
       .from('session_students')
-      .select('student_name')
-      .eq('session_id', sessionId);
+      .select('*')
+      .eq('class_session_id', sessionId); // Note: column name is class_session_id
 
     if (data) {
-      const names = data.map(d => d.student_name);
+      const students = data as SessionStudent[];
+      setRoster(students);
+      const names = students.map(d => d.name);
       setActiveStudentNames(names);
-      // Also reset grading progress? 
-      // If we switch classes, we typically want to start grading that class.
-      // Resetting current indices seems appropriate.
+
+      // Reset grading progress mainly for new context
+      // But preserve "Stack" if we are reloading? 
+      // User requirement: "Fetch session_students ... but DO NOT pre-fill studentOrder".
+      // So we start fresh or keep what we have? 
+      // If switching classes, we should probably clear the current stack (studentOrder).
+      setStudentOrder([]);
       setCurrentRowIndex(0);
-      setStudentOrder([]); // Will be rebuilt as we grade
       setCurrentStudentIndex(0);
       setCompletedStudentCount(0);
+      setStudentsData(new Map()); // Clear data for fresh start with new class
+      setNameInput('');
     }
+  };
+
+  const handleClassCreated = (sessionId: string) => {
+    // Refresh session list and select the new one
+    // We can just re-trigger the effect by dependency or manually fetch
+    // But faster to just append and select
+    // Actually relying on effect is safer if we want to be consistent
+    // Let's reload sessions then select.
+    const fetchSessions = async () => {
+      const { data } = await supabase
+        .from('class_sessions')
+        .select('*')
+        .eq('rubric_id', rubric.id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+
+      if (data) {
+        setAvailableSessions(data as ClassSession[]);
+        // Select the new one
+        handleSessionChange(sessionId);
+      }
+    };
+    fetchSessions();
   };
 
   useEffect(() => {
@@ -719,6 +756,10 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
 
     const studentData = getStudentData(currentStudentName);
 
+    // Find Session Student ID
+    const sessionStudent = roster.find(s => s.name === currentStudentName);
+    const sessionStudentId = sessionStudent?.id;
+
     // Update Selections
     const newSelections = { ...studentData.selections };
     if (!isExam && selectedColumn) {
@@ -759,7 +800,8 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
       cellFeedback: newCellFeedback,
       generalFeedback: studentData.generalFeedback || generalFeedback,
       calculationCorrect: newCalculationCorrect,
-      ...explicitUpdates // Merge any explicit updates (like notMadeRows)
+      sessionStudentId: sessionStudentId || studentData.sessionStudentId, // Persist or add new
+      ...(explicitUpdates || {}) // Merge any explicit updates (like notMadeRows)
     };
 
     updateStudentData(currentStudentName, updatedStudentDataValues);
@@ -767,27 +809,43 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
     // Track Progress
     setCompletedStudentCount(prev => prev + 1);
 
-    // If first unit, add to student order
+    // ROUND 1: Stack Building
     if (isFirstUnit) {
-      setStudentOrder(prev => [...prev, currentStudentName]);
-    }
-
-    // Reset inputs
-    setSelectedColumn(null);
-    setCurrentManualScore(undefined);
-    setCurrentCellFeedback('');
-    setGeneralFeedback('');
-    // Reset calculation checkbox for next student (default to true)
-    setCalculationCorrect(true);
-
-    if (isFirstUnit) {
-      setNameInput('');
-      const gradedCount = studentOrder.length + 1;
-      if (gradedCount >= activeStudentNames.length) {
-        moveToNextUnit();
+      // Add to stack if not already there (safety check, though we filter in UI)
+      if (!studentOrder.includes(currentStudentName)) {
+        setStudentOrder(prev => [...prev, currentStudentName]);
       }
-      setTimeout(() => inputRef.current?.focus(), 100);
+
+      // Clear Input for next student
+      setNameInput('');
+      setOpenCombobox(true); // Re-open for speed? Optional.
+
+      // Reset inputs
+      setSelectedColumn(null);
+      setCurrentManualScore(undefined);
+      setCurrentCellFeedback('');
+      setGeneralFeedback('');
+      setCalculationCorrect(true);
+
+      // Check if we are done with all available students? 
+      // Or just let user keep going until they decide to move on.
+      // Usually user clicks "Complete Row" or similar if they are done?
+      // Or if `studentOrder.length == activeStudentNames.length`?
+
+      // Actually, we don't automatically move to next unit in Round 1 unless physically triggered?
+      // But standard horizontal grading usually flows student -> student.
+      // So we just clear and wait.
+      // But `moveToNextUnit` needs to be manual or triggered.
+
     } else {
+      // ROUND 2+: Follow Stack
+      // Reset inputs
+      setSelectedColumn(null);
+      setCurrentManualScore(undefined);
+      setCurrentCellFeedback('');
+      setGeneralFeedback('');
+      setCalculationCorrect(true);
+
       if (currentStudentIndex + 1 >= studentOrder.length) {
         moveToNextUnit();
       } else {
@@ -904,7 +962,8 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
           extraConditionsMet: data.extraConditionsMet,
           metRequirements: data.metRequirements,
           selectedRoute: data.selectedRoute,
-          rubricVersion: data.rubricVersion
+          rubricVersion: data.rubricVersion,
+          sessionStudentId: data.sessionStudentId
         };
 
         addGradedStudent(rubric.id, gradedStudent);
@@ -1042,6 +1101,12 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
 
   return (
     <div className="min-h-screen bg-background">
+      <CreateClassDialog
+        open={showCreateClassDialog}
+        onOpenChange={setShowCreateClassDialog}
+        rubricId={rubric.id}
+        onClassCreated={handleClassCreated}
+      />
 
       {/* Guest Warning Banner */}
       {!user && showGuestWarning && (
@@ -1078,17 +1143,30 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
               {/* Class Selector */}
               <div className="flex items-center gap-2 border-l pl-4">
                 <Users className="h-4 w-4 text-muted-foreground" />
-                <Select value={selectedSessionId} onValueChange={handleSessionChange}>
+                <Select value={selectedSessionId} onValueChange={(val) => {
+                  if (val === 'create_new') {
+                    setShowCreateClassDialog(true);
+                  } else {
+                    handleSessionChange(val);
+                  }
+                }}>
                   <SelectTrigger className="w-[180px] h-8 text-xs">
-                    <SelectValue placeholder="All Students" />
+                    <SelectValue placeholder="Select Class" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Students (Default)</SelectItem>
+                    <SelectItem value="all">Mijn Leerlingen (Standaard)</SelectItem>
                     {availableSessions.map(session => (
                       <SelectItem key={session.id} value={session.id}>
                         {session.name}
                       </SelectItem>
                     ))}
+                    <div className="border-t my-1" />
+                    <SelectItem value="create_new" className="text-primary font-medium cursor-pointer">
+                      <div className="flex items-center gap-2">
+                        <Plus className="h-3 w-3" />
+                        Nieuwe Klas
+                      </div>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1289,36 +1367,58 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
             )}
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Student Name Input (First Row Only) */}
+            {/* Student Name Input (First Row Only / Round 1) */}
             {isFirstRow && (
               <div className="space-y-2 relative">
-                <Label htmlFor="student-name">Student Name</Label>
-                <Input
-                  ref={inputRef}
-                  id="student-name"
-                  placeholder="Type or select student name..."
-                  value={nameInput}
-                  onChange={(e) => {
-                    setNameInput(e.target.value);
-                    setShowSuggestions(true);
-                  }}
-                  onFocus={() => setShowSuggestions(true)}
-                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                  autoFocus
-                />
-                {showSuggestions && availableNames.length > 0 && (
-                  <div className="absolute z-10 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-48 overflow-auto">
-                    {availableNames.slice(0, 10).map((name) => (
-                      <button
-                        key={name}
-                        className="w-full px-3 py-2 text-left hover:bg-accent text-sm"
-                        onMouseDown={() => handleSuggestionClick(name)}
-                      >
-                        {name}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <Label htmlFor="student-name">Student Name (Stack Building)</Label>
+                <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={openCombobox}
+                      className="w-full justify-between"
+                    >
+                      {nameInput || "Select next student from stack..."}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[400px] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Search student..." />
+                      <CommandList>
+                        <CommandEmpty>No student found.</CommandEmpty>
+                        <CommandGroup heading="Available Students">
+                          {activeStudentNames
+                            .filter(name => !studentOrder.includes(name)) // Filter out already graded
+                            .map((name) => (
+                              <CommandItem
+                                key={name}
+                                value={name}
+                                onSelect={(currentValue) => {
+                                  setNameInput(currentValue);
+                                  setOpenCombobox(false);
+                                  // Optional: Auto-focus input/grading area?
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    nameInput === name ? "opacity-100" : "opacity-0"
+                                  )}
+                                />
+                                {name}
+                              </CommandItem>
+                            ))}
+                        </CommandGroup>
+                        {/* Optional: Show already graded? */}
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                <p className="text-xs text-muted-foreground">
+                  Selecteer de volgende leerling van de stapel. Deze wordt toegevoegd aan de volgorde.
+                </p>
               </div>
             )}
 

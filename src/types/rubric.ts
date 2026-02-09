@@ -59,6 +59,7 @@ export interface GradedStudent {
   selectedRoute?: 'orange' | 'yellow' | 'blue'; // Learning Route
   rubricVersion?: 'A' | 'B'; // Test Version
   is_self_assessment?: boolean; // Origin flag
+  sessionStudentId?: string; // Link to session_students table
 }
 
 export type RubricType = 'assignment' | 'exam';
@@ -128,6 +129,7 @@ export interface StudentGradingData {
   rubricVersion?: 'A' | 'B';
   notMadeRows?: { [rowId: string]: boolean }; // Track "Not Made" / "N.v.t." per question
   is_self_assessment?: boolean;
+  sessionStudentId?: string;
 }
 
 export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
