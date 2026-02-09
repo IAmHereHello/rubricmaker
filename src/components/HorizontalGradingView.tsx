@@ -810,7 +810,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
     setCompletedStudentCount(prev => prev + 1);
 
     // ROUND 1: Stack Building
-    if (isFirstUnit) {
+    if (isFirstRow) {
       // Add to stack if not already there (safety check, though we filter in UI)
       if (!studentOrder.includes(currentStudentName)) {
         setStudentOrder(prev => [...prev, currentStudentName]);
@@ -827,7 +827,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
       setGeneralFeedback('');
       setCalculationCorrect(true);
 
-      // Check if we are done with all available students? 
+      // Check if we are done with all available students?
       // Or just let user keep going until they decide to move on.
       // Usually user clicks "Complete Row" or similar if they are done?
       // Or if `studentOrder.length == activeStudentNames.length`?
@@ -1625,8 +1625,8 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
               <Button
                 onClick={() => handleNextStudent()}
                 disabled={
-                  (!isFirstUnit && currentStudentIndex >= studentOrder.length) || // End of stack in R2
-                  (isFirstUnit && !nameInput.trim()) || // No name in R1
+                  (!isFirstRow && currentStudentIndex >= studentOrder.length) || // End of stack in R2
+                  (isFirstRow && !nameInput.trim()) || // No name in R1
                   (isExam ? currentManualScore === undefined : !selectedColumn) // No score
                 }
                 className="flex-[2] gap-2"
