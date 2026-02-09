@@ -25,7 +25,7 @@ export default function LVSPage() {
     const { user } = useAuth();
 
     // -- State --
-    const [classes, setClasses] = useState<ClassSession[]>([]);
+    const [classes, setClasses] = useState<Class[]>([]);
     const [selectedClassId, setSelectedClassId] = useState<string>('');
     const [students, setStudents] = useState<SessionStudent[]>([]);
 
@@ -38,20 +38,84 @@ export default function LVSPage() {
     const [selectedResult, setSelectedResult] = useState<GradedStudent | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
 
+    // -- Dialog State --
+    const [isAddClassOpen, setIsAddClassOpen] = useState(false);
+    const [newClassName, setNewClassName] = useState('');
+    const [newClassRoster, setNewClassRoster] = useState('');
+    const [isCreatingClass, setIsCreatingClass] = useState(false);
+
+    // -- Create Class Handler --
+    const handleCreateClass = async () => {
+        if (!newClassName.trim() || !user) return;
+        setIsCreatingClass(true);
+        try {
+            // 1. Create Class
+            const { data: classData, error: classError } = await supabase
+                .from('classes')
+                .insert([{
+                    name: newClassName.trim(),
+                    user_id: user.id
+                }])
+                .select()
+                .single();
+
+            if (classError) throw classError;
+
+            const newClassId = classData.id;
+
+            // 2. Add Students
+            const studentNames = newClassRoster.split('\n').map(n => n.trim()).filter(n => n.length > 0);
+            if (studentNames.length > 0) {
+                const studentPayload = studentNames.map(name => ({
+                    class_id: newClassId,
+                    name: name
+                }));
+
+                const { error: rosterError } = await supabase
+                    .from('class_students')
+                    .insert(studentPayload);
+
+                if (rosterError) throw rosterError;
+            }
+
+            toast({
+                title: "Class Created",
+                description: `Created class "${newClassName}" with ${studentNames.length} students.`
+            });
+
+            setNewClassName('');
+            setNewClassRoster('');
+            setIsAddClassOpen(false);
+
+            // Refresh classes
+            // Ideally we'd call fetching function here, but we can just clear classes to trigger refetch if efficient or expose fetchClasses
+            window.location.reload(); // Simple refresh for now to ensure data consistency
+
+        } catch (e: any) {
+            console.error("Create Class Error", e);
+            toast({
+                variant: "destructive",
+                title: "Error creating class",
+                description: e.message
+            });
+        } finally {
+            setIsCreatingClass(false);
+        }
+    };
+
     // -- 1. Fetch Classes on Mount --
     useEffect(() => {
         async function fetchClasses() {
             if (!user) return;
             setIsLoadingClasses(true);
             const { data } = await supabase
-                .from('class_sessions')
+                .from('classes')
                 .select('*')
-                .eq('is_active', true)
                 .eq('user_id', user.id) // Assuming class_sessions has user_id, if not we rely on RLS
                 .order('created_at', { ascending: false });
 
             if (data) {
-                setClasses(data as ClassSession[]);
+                setClasses(data as Class[]);
             }
             setIsLoadingClasses(false);
         }
@@ -157,7 +221,7 @@ export default function LVSPage() {
 
     // -- Render Helpers --
 
-    const getCellContent = (student: SessionStudent, rubricId: string) => {
+    const getCellContent = (student: ClassStudent, rubricId: string) => {
         // Find result
         // Should we handle multiple attempts? Taking latest for now.
         // results sorted by date? We didn't sort allResults. 
@@ -253,6 +317,11 @@ export default function LVSPage() {
                 </Select>
 
                 {isLoadingData && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+
+                <Button onClick={() => setIsAddClassOpen(true)} className="gap-2">
+                    <Plus className="h-4 w-4" />
+                    Nieuwe Klas
+                </Button>
             </div>
 
             {/* Matrix */}
@@ -386,6 +455,41 @@ export default function LVSPage() {
                             )}
                         </div>
                     )}
+                </DialogContent>
+            </Dialog>
+            {/* Add Class Dialog */}
+            <Dialog open={isAddClassOpen} onOpenChange={setIsAddClassOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Add New Class</DialogTitle>
+                        <DialogDescription>Create a class roster to track student progress over time.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label>Class Name</Label>
+                            <Input
+                                placeholder="e.g. Havo 4 - Dutch"
+                                value={newClassName}
+                                onChange={e => setNewClassName(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Student Roster</Label>
+                            <Textarea
+                                placeholder="Paste student names here (one per line)..."
+                                className="min-h-[150px]"
+                                value={newClassRoster}
+                                onChange={e => setNewClassRoster(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsAddClassOpen(false)}>Cancel</Button>
+                        <Button onClick={handleCreateClass} disabled={!newClassName.trim() || isCreatingClass}>
+                            {isCreatingClass && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Create Class
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>

@@ -144,60 +144,72 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
 
   // State for student names (prop OR hydrated from session)
   // State for student names (prop OR hydrated from session)
+  // -- LVS Integration State --
   const [activeStudentNames, setActiveStudentNames] = useState<string[]>(initialStudentNames);
-  const [roster, setRoster] = useState<SessionStudent[]>([]); // Full roster with IDs
-  const [availableSessions, setAvailableSessions] = useState<ClassSession[]>([]);
-  const [selectedSessionId, setSelectedSessionId] = useState<string>('all');
+  const [roster, setRoster] = useState<ClassStudent[]>([]); // Full roster with IDs
+  const [availableSessions, setAvailableSessions] = useState<{ id: string, name: string }[]>([]); // Renamed in types effectively to Class[]
+  const [selectedSessionId, setSelectedSessionId] = useState<string>('all'); // This is actually Class ID now
+  const [studentMap, setStudentMap] = useState<Record<string, string>>({}); // Name -> ClassStudentId
   const [showCreateClassDialog, setShowCreateClassDialog] = useState(false);
   const [openCombobox, setOpenCombobox] = useState(false);
 
   useEffect(() => {
-    // Fetch sessions for this rubric
-    const fetchSessions = async () => {
+    // Fetch Classes (Permanent LVS Classes)
+    const fetchClasses = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
       const { data } = await supabase
-        .from('grading_sessions')
+        .from('classes')
         .select('*')
-        .eq('rubric_id', rubric.id)
-        .eq('is_active', true)
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (data) {
-        setAvailableSessions(data as ClassSession[]);
+        setAvailableSessions(data);
       }
     };
-    fetchSessions();
-  }, [rubric.id]);
+    fetchClasses();
+  }, []);
 
-  const handleSessionChange = async (sessionId: string) => {
-    setSelectedSessionId(sessionId);
-    if (sessionId === 'all') {
+  const handleSessionChange = async (classId: string) => {
+    setSelectedSessionId(classId);
+    if (classId === 'all') {
       setActiveStudentNames(initialStudentNames);
       setRoster([]);
+      setStudentMap({});
       return;
     }
 
-    // Fetch students for this session
+    // Fetch students for this Class from class_students
     const { data } = await supabase
-      .from('session_students')
+      .from('class_students')
       .select('*')
-      .eq('class_session_id', sessionId); // Note: column name is class_session_id
+      .eq('class_id', classId);
 
     if (data) {
-      const students = data as SessionStudent[];
+      const students = data as ClassStudent[];
       setRoster(students);
       const names = students.map(d => d.name);
       setActiveStudentNames(names);
 
+      // Map Name -> ID
+      const map: Record<string, string> = {};
+      students.forEach(s => {
+        map[s.name] = s.id;
+      });
+      setStudentMap(map);
+
+      // Link class name to context
+      const className = availableSessions.find(c => c.id === classId)?.name || '';
+      handleUpdateStudentContext('className', className);
+
       // Reset grading progress mainly for new context
-      // But preserve "Stack" if we are reloading? 
-      // User requirement: "Fetch session_students ... but DO NOT pre-fill studentOrder".
-      // So we start fresh or keep what we have? 
-      // If switching classes, we should probably clear the current stack (studentOrder).
       setStudentOrder([]);
       setCurrentRowIndex(0);
       setCurrentStudentIndex(0);
       setCompletedStudentCount(0);
-      setStudentsData(new Map()); // Clear data for fresh start with new class
+      setStudentsData(new Map());
       setNameInput('');
     }
   };
@@ -1141,6 +1153,25 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
               </Button>
 
               {/* Class Selector */}
+              <div className="mt-4">
+                <label className="text-xs font-medium text-muted-foreground block mb-1">Selecteer Klas</label>
+                <Select value={selectedSessionId} onValueChange={handleSessionChange}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Kies een klas..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Geen klas (Vrij)</SelectItem>
+                    {availableSessions.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedSessionId !== 'all' && (
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    {activeStudentNames.length} leerlingen geladen.
+                  </p>
+                )}
+              </div>
               <div className="flex items-center gap-2 border-l pl-4">
                 <Users className="h-4 w-4 text-muted-foreground" />
                 <Select value={selectedSessionId} onValueChange={(val) => {
