@@ -43,6 +43,24 @@ export default function LVSPage() {
     const [newClassName, setNewClassName] = useState('');
     const [newClassRoster, setNewClassRoster] = useState('');
     const [isCreatingClass, setIsCreatingClass] = useState(false);
+    const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+
+    // -- Delete Class Handler --
+    const handleDeleteClass = async () => {
+        if (!selectedClassId) return;
+        try {
+            const { error } = await supabase.from('classes').delete().eq('id', selectedClassId);
+            if (error) throw error;
+
+            toast({ title: "Class Deleted" });
+            setSelectedClassId('');
+            setClasses(prev => prev.filter(c => c.id !== selectedClassId));
+            setIsDeleteConfirmOpen(false);
+        } catch (e: any) {
+            console.error("Delete Error", e);
+            toast({ variant: "destructive", title: "Error deleting class", description: e.message });
+        }
+    };
 
     // -- Create Class Handler --
     const handleCreateClass = async () => {
