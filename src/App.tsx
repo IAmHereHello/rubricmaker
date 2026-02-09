@@ -14,6 +14,7 @@ import NotFound from "./pages/NotFound";
 import StudentAssessmentPage from "./pages/StudentAssessmentPage";
 import StudentSessionPage from "./pages/StudentSessionPage";
 import RubricDashboard from "./pages/RubricDashboard";
+import LVSPage from "./pages/LVSPage";
 
 const queryClient = new QueryClient();
 
@@ -53,6 +54,7 @@ const App = () => (
                 <Route path="/grade/:rubricId" element={<Grade />} />
                 <Route path="/grade/:rubricId/horizontal" element={<HorizontalGrade />} />
                 <Route path="/results" element={<Results />} />
+                <Route path="/lvs" element={<LVSPage />} />
               </Route>
 
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

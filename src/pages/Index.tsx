@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { RubricList } from '@/components/RubricList';
-import { ClipboardList, Upload, LogOut, UserPlus, AlertTriangle, Loader2 } from 'lucide-react';
+import { ClipboardList, Upload, LogOut, UserPlus, AlertTriangle, Loader2, BarChart3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { importGradingSession } from '@/lib/excel-state';
 import { useToast } from '@/components/ui/use-toast';
@@ -134,6 +134,10 @@ const Index = () => {
             </Button>
             <Link to="/results" className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2">
               {t('action.view_results')}
+            </Link>
+            <Link to="/lvs" className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2 gap-2">
+              <BarChart3 className="h-4 w-4" />
+              LVS
             </Link>
 
             {isGuest ? (

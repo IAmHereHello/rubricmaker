@@ -1276,7 +1276,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
                         ? "bg-green-100 text-green-700 border-green-200"
                         : "bg-red-100 text-red-700 border-red-200"
                     )}>
-                      {getGoalStatus() ? 'BEHEERST' : 'NIET BEHEERST'}
+                      {getGoalStatus() ? 'BEHEERST' : 'IN ONTWIKKELING'}
                     </div>
                   )}
                   {currentUnit.rule.extraConditions.length > 0 && (
