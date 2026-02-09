@@ -3,18 +3,22 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { decrypt, getPrivacyKey } from '@/lib/encryption';
-import { ClassSession, SessionStudent, GradedStudent, Rubric } from '@/types/rubric';
+import { Class, ClassStudent, GradedStudent, Rubric } from '@/types/rubric';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ArrowLeft, Loader2, FileText, CheckCircle2, AlertCircle, HelpCircle } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { ArrowLeft, Loader2, FileText, CheckCircle2, AlertCircle, HelpCircle, UserPlus, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
+import { useToast } from '@/components/ui/use-toast';
 
 export default function LVSPage() {
     const navigate = useNavigate();
@@ -72,6 +76,7 @@ export default function LVSPage() {
 
                 const classStudents = (studentData as SessionStudent[]) || [];
                 setStudents(classStudents);
+
 
                 // B. Fetch All Results (Broad)
                 // Note: Ideally we'd filter by session_student_id, but it's encrypted in the blob usually.
