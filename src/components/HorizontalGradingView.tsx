@@ -1624,7 +1624,11 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
               </Button>
               <Button
                 onClick={() => handleNextStudent()}
-                disabled={!currentStudentName.trim() || (isExam ? currentManualScore === undefined : !selectedColumn)}
+                disabled={
+                  (!isFirstUnit && currentStudentIndex >= studentOrder.length) || // End of stack in R2
+                  (isFirstUnit && !nameInput.trim()) || // No name in R1
+                  (isExam ? currentManualScore === undefined : !selectedColumn) // No score
+                }
                 className="flex-[2] gap-2"
                 size="lg"
               >
