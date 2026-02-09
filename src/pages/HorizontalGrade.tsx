@@ -38,18 +38,7 @@ const HorizontalGrade = () => {
 
   const isResuming = locationState?.resume || false;
 
-  if (studentNames.length === 0 && !isResuming && viewMode === 'grading') {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Card className="max-w-md">
-          <CardContent className="pt-6 text-center">
-            <p className="text-muted-foreground mb-4">No student names provided</p>
-            <Button onClick={() => navigate('/')}>Go Back</Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  // Guard removed to allow class selection
 
   if (viewMode === 'review') {
     return (

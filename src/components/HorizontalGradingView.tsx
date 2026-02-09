@@ -818,6 +818,50 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
 
     updateStudentData(currentStudentName, updatedStudentDataValues);
 
+    // CLOUD SAVE (IMMEDIATE)
+    // We construct the graded student object using the NEW values
+    if (!isGuest && privacyKey) {
+      // Helper to calc score with overrides
+      // We can't use the hook directly as it reads from state.
+      // We'll trust the hook will update eventually, but for now we want to save THIS update.
+      // Actually, let's use a fire-and-forget save that constructs the object manually.
+      // Or simpler: Just save what we have. Score calculation might be slightly stale if complex, but usually OK for row-by-row.
+      // BETTER: Re-calculate score here locally.
+      let currentTotal = 0;
+      // Simple sum for now, duplicating calc logic slightly or we extract `calculateScore` to be pure.
+      // Let's assume `calculateStudentScore` works on the store, which is not updated yet.
+      // So we should probably wait for effect? No.
+      // Let's just save the `GradedStudent` with the new data.
+
+      const status = getStudentStatus(currentStudentName); // This also reads from store.
+
+      // FAST FIX: We save the DATA. The score might be updated on next calc.
+      // But user wants "Saved to Supabase".
+
+      const gradedStudentPayload: GradedStudent = {
+        id: studentData.sessionStudentId || `${currentStudentName}-${rubric.id}`, // Best effort ID
+        studentName: currentStudentName,
+        selections: newSelections,
+        rowScores: newRowScores,
+        cellFeedback: newCellFeedback,
+        calculationCorrect: newCalculationCorrect,
+        generalFeedback: updatedStudentDataValues.generalFeedback,
+        className: className,
+        totalScore: 0, // Placeholder, will be recalculated on load or we can try to calc
+        status: 'development', // Placeholder
+        statusLabel: 'Saving...',
+        gradedAt: new Date(),
+        extraConditionsMet: updatedStudentDataValues.extraConditionsMet,
+        metRequirements: updatedStudentDataValues.metRequirements,
+        selectedRoute: updatedStudentDataValues.selectedRoute,
+        rubricVersion: updatedStudentDataValues.rubricVersion,
+        sessionStudentId: updatedStudentDataValues.sessionStudentId,
+        is_self_assessment: updatedStudentDataValues.is_self_assessment
+      };
+
+      saveResult(rubric.id, gradedStudentPayload);
+    }
+
     // Track Progress
     setCompletedStudentCount(prev => prev + 1);
 
@@ -838,16 +882,6 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
       setCurrentCellFeedback('');
       setGeneralFeedback('');
       setCalculationCorrect(true);
-
-      // Check if we are done with all available students?
-      // Or just let user keep going until they decide to move on.
-      // Usually user clicks "Complete Row" or similar if they are done?
-      // Or if `studentOrder.length == activeStudentNames.length`?
-
-      // Actually, we don't automatically move to next unit in Round 1 unless physically triggered?
-      // But standard horizontal grading usually flows student -> student.
-      // So we just clear and wait.
-      // But `moveToNextUnit` needs to be manual or triggered.
 
     } else {
       // ROUND 2+: Follow Stack

@@ -14,7 +14,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Loader2, FileText, CheckCircle2, AlertCircle, HelpCircle, UserPlus, Plus } from 'lucide-react';
+import { ArrowLeft, Loader2, FileText, CheckCircle2, AlertCircle, HelpCircle, UserPlus, Plus, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -322,6 +322,17 @@ export default function LVSPage() {
                     <Plus className="h-4 w-4" />
                     Nieuwe Klas
                 </Button>
+
+                {selectedClassId && (
+                    <Button
+                        variant="destructive"
+                        size="icon"
+                        onClick={() => setIsDeleteConfirmOpen(true)}
+                        title="Delete Class"
+                    >
+                        <Trash2 className="h-4 w-4" />
+                    </Button>
+                )}
             </div>
 
             {/* Matrix */}
@@ -489,6 +500,22 @@ export default function LVSPage() {
                             {isCreatingClass && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             Create Class
                         </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            {/* Delete Confirmation Dialog */}
+            <Dialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Delete Class?</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to delete this class? This action cannot be undone and will delete the class roster.
+                            Existing grading data for these students might be preserved but unlinked from this class.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsDeleteConfirmOpen(false)}>Cancel</Button>
+                        <Button variant="destructive" onClick={handleDeleteClass}>Delete Permanently</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
