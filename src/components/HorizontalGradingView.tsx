@@ -17,7 +17,7 @@ import { GradedStudentsTable } from '@/components/GradedStudentsTable';
 import { cn } from '@/lib/utils';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { CellFeedback, GradedStudent, Rubric, Threshold, StudentGradingData, ClassSession } from '@/types/rubric';
+import { CellFeedback, GradedStudent, Rubric, Threshold, StudentGradingData, ClassSession, ClassStudent } from '@/types/rubric';
 import { exportGradingSession, GradingSessionState } from '@/lib/excel-state';
 import { useToast } from '@/components/ui/use-toast';
 import { Switch } from '@/components/ui/switch';
@@ -324,7 +324,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
   const [selectedColumn, setSelectedColumn] = useState<string | null>(null);
 
   // Helper to update route/version
-  const handleUpdateStudentContext = (field: 'selectedRoute' | 'rubricVersion', value: string) => {
+  const handleUpdateStudentContext = (field: 'selectedRoute' | 'rubricVersion' | 'className', value: string) => {
     if (!currentStudentName) return;
     updateStudentData(currentStudentName, { [field]: value });
   };
@@ -1693,10 +1693,10 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
                   (!isFirstRow && currentStudentIndex >= studentOrder.length) || // End of stack in R2
                   (isFirstRow && !nameInput.trim()) || // No name in R1
                   (isExam
-                    ? currentManualScore === undefined
+                    ? (currentManualScore === undefined && !currentStudentData.notMadeRows?.[currentRow.id])
                     : isMastery
-                      ? currentStudentData.rowScores?.[currentRow.id] === undefined
-                      : !selectedColumn) // No score
+                      ? (currentStudentData.rowScores?.[currentRow.id] === undefined && !currentStudentData.notMadeRows?.[currentRow.id])
+                      : (!selectedColumn && !currentStudentData.notMadeRows?.[currentRow.id])) // No score and not skipped
                 }
                 className="flex-[2] gap-2"
                 size="lg"

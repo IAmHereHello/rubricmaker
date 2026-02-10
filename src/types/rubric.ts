@@ -130,6 +130,7 @@ export interface StudentGradingData {
   notMadeRows?: { [rowId: string]: boolean }; // Track "Not Made" / "N.v.t." per question
   is_self_assessment?: boolean;
   sessionStudentId?: string;
+  className?: string;
 }
 
 export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
@@ -150,6 +151,12 @@ export interface SessionStudent {
   student_key?: string; // Optional unique key for the student in this session
 }
 
+export interface ClassStudent {
+  id: string;
+  class_id: string; // or Link to classes table
+  name: string;
+}
+
 export interface ClassSession {
   id: string;
   rubric_id: string;
@@ -158,3 +165,4 @@ export interface ClassSession {
   created_at: string;
   students?: SessionStudent[]; // Optional joined data
 }
+
