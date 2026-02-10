@@ -749,30 +749,28 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
   }, [rubric, studentsData, calculateStudentScore, isExam]);
 
   // -- Handlers --
-
   const handleColumnSelect = (columnId: string) => {
     setSelectedColumn(columnId);
   };
 
-  const handleNextStudent = (explicitUpdates?: Partial<StudentGradingData>) => {
-    // Check validation based on FUTURE state (merging current with explicit updates)
-    const nextNotMade = explicitUpdates?.notMadeRows?.[currentRow.id]
-      ?? currentStudentData.notMadeRows?.[currentRow.id];
+  const handleNextStudent = async (explicitUpdates?: Partial<StudentGradingData>) => {
+    // 1. Validation First
+    if (!currentStudentName) {
+      toast({
+        title: "Selecteer eerst een leerling",
+        description: "Je moet een leerling selecteren of een naam invoeren voordat je doorgaat.",
+        variant: "destructive"
+      });
+      return;
+    }
 
-    // Allowed to proceed if: 
-    // 1. We have a student name
-    // 2. AND (We have a valid score OR We are skipping this row/not-made)
-    const hasValidExamScore = isExam && currentManualScore !== undefined;
-    const hasValidMasteryScore = isMastery && currentStudentData.rowScores?.[currentRow.id] !== undefined;
-    const hasValidColumn = !isExam && !isMastery && selectedColumn;
+    console.log('[handleNextStudent] Starting...', {
+      mode: isFirstRow ? 'Build Stack' : 'Follow Stack',
+      index: currentStudentIndex,
+      student: currentStudentName
+    });
 
-    // Logic: If "Not Made" is true, we don't need a score.
-    const canProceed = currentStudentName && (
-      nextNotMade || hasValidExamScore || hasValidMasteryScore || hasValidColumn
-    );
-
-    if (!canProceed) return;
-
+    // Determine data to save
     const studentData = getStudentData(currentStudentName);
 
     // Find Session Student ID
@@ -799,7 +797,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
 
     // Update Feedback
     let newCellFeedback = [...studentData.cellFeedback];
-    const feedbackKeyColumn = isExam ? 'manual' : selectedColumn; // Use 'manual' as key for exam
+    const feedbackKeyColumn = isExam ? 'manual' : selectedColumn;
 
     if (currentCellFeedback && feedbackKeyColumn) {
       const existingIndex = newCellFeedback.findIndex(
@@ -812,41 +810,27 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
       }
     }
 
-    // Save to State
+    // Prepare updated data object
     const updatedStudentDataValues = {
       selections: newSelections,
       rowScores: newRowScores,
       cellFeedback: newCellFeedback,
       generalFeedback: studentData.generalFeedback || generalFeedback,
       calculationCorrect: newCalculationCorrect,
-      sessionStudentId: sessionStudentId || studentData.sessionStudentId, // Persist or add new
-      ...(explicitUpdates || {}) // Merge any explicit updates (like notMadeRows)
+      sessionStudentId: sessionStudentId || studentData.sessionStudentId,
+      ...(explicitUpdates || {})
     };
 
+    // Update Local State
     updateStudentData(currentStudentName, updatedStudentDataValues);
 
-    // CLOUD SAVE (IMMEDIATE)
-    // We construct the graded student object using the NEW values
+    // 2. Save Current Grade
+    // Track Progress
+    setCompletedStudentCount(prev => prev + 1);
+
     if (!isGuest && privacyKey) {
-      // Helper to calc score with overrides
-      // We can't use the hook directly as it reads from state.
-      // We'll trust the hook will update eventually, but for now we want to save THIS update.
-      // Actually, let's use a fire-and-forget save that constructs the object manually.
-      // Or simpler: Just save what we have. Score calculation might be slightly stale if complex, but usually OK for row-by-row.
-      // BETTER: Re-calculate score here locally.
-      let currentTotal = 0;
-      // Simple sum for now, duplicating calc logic slightly or we extract `calculateScore` to be pure.
-      // Let's assume `calculateStudentScore` works on the store, which is not updated yet.
-      // So we should probably wait for effect? No.
-      // Let's just save the `GradedStudent` with the new data.
-
-      const status = getStudentStatus(currentStudentName); // This also reads from store.
-
-      // FAST FIX: We save the DATA. The score might be updated on next calc.
-      // But user wants "Saved to Supabase".
-
       const gradedStudentPayload: GradedStudent = {
-        id: studentData.sessionStudentId || `${currentStudentName}-${rubric.id}`, // Best effort ID
+        id: studentData.sessionStudentId || `${currentStudentName}-${rubric.id}`,
         studentName: currentStudentName,
         selections: newSelections,
         rowScores: newRowScores,
@@ -854,8 +838,8 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
         calculationCorrect: newCalculationCorrect,
         generalFeedback: updatedStudentDataValues.generalFeedback,
         className: className,
-        totalScore: 0, // Placeholder, will be recalculated on load or we can try to calc
-        status: 'development', // Placeholder
+        totalScore: 0,
+        status: 'development',
         statusLabel: 'Saving...',
         gradedAt: new Date(),
         extraConditionsMet: updatedStudentDataValues.extraConditionsMet,
@@ -866,49 +850,23 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
         is_self_assessment: updatedStudentDataValues.is_self_assessment
       };
 
-      saveResult(rubric.id, gradedStudentPayload);
+      // Await saveResult
+      await saveResult(rubric.id, gradedStudentPayload);
     }
 
-    // Track Progress
-    setCompletedStudentCount(prev => prev + 1);
 
-    // ROUND 1: Stack Building
+    // 3. Logic Branch A: "Building the Stack" (Question 1)
     if (isFirstRow) {
-      // Add to stack if not already there (safety check, though we filter in UI)
+      // Check Duplicate & Add to Stack
       if (!studentOrder.includes(currentStudentName)) {
         setStudentOrder(prev => [...prev, currentStudentName]);
       }
 
-      setCalculationCorrect(true);
+      // Clear UI
+      setNameInput('');
+      setOpenCombobox(true); // Ready for next pick
+      setCurrentStudentIndex(prev => prev + 1);
 
-      // Auto-advance logic for Class Roster (Round 1)
-      if (activeStudentNames.length > 0) {
-        // Find next student who hasn't been graded yet (i.e. not in studentOrder, excluding current one which was just added)
-        // Note: 'studentOrder' update is async/batched, so we need to account for 'currentStudentName' being added.
-        // Actually, we just updated studentOrder via setStudentOrder((prev) => [...prev, currentStudentName]);
-        // But we can't read new state yet. 
-        // So we look for names in activeStudentNames that are NOT in (studentOrder + currentStudentName).
-
-        const alreadyGraded = new Set([...studentOrder, currentStudentName]);
-        const nextStudent = activeStudentNames.find(n => !alreadyGraded.has(n));
-
-        if (nextStudent) {
-          // Auto-fill next student
-          setNameInput(nextStudent);
-          setOpenCombobox(false);
-        } else {
-          // No more students to add! We are done with Round 1.
-          // Move to next unit immediately.
-          moveToNextUnit();
-        }
-      } else {
-        // Fallback for manual stack building (no roster)
-        setNameInput('');
-        setOpenCombobox(true);
-      }
-
-    } else {
-      // ROUND 2+: Follow Stack
       // Reset inputs
       setSelectedColumn(null);
       setCurrentManualScore(undefined);
@@ -916,13 +874,32 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
       setGeneralFeedback('');
       setCalculationCorrect(true);
 
-      if (currentStudentIndex + 1 >= studentOrder.length) {
+    }
+    // 4. Logic Branch B: "Following the Stack" (Question 2+)
+    else {
+      const nextIndex = currentStudentIndex + 1;
+
+      // Check End of Stack
+      if (nextIndex >= studentOrder.length) {
+        toast({
+          title: "Vraag afgerond!",
+          description: "Je hebt alle leerlingen voor deze vraag gehad.",
+        });
         moveToNextUnit();
       } else {
-        setCurrentStudentIndex(prev => prev + 1);
+        // Load Next Student
+        setCurrentStudentIndex(nextIndex);
+
+        // Reset inputs
+        setSelectedColumn(null);
+        setCurrentManualScore(undefined);
+        setCurrentCellFeedback('');
+        setGeneralFeedback('');
+        setCalculationCorrect(true);
       }
     }
   };
+
 
   const handlePreviousStudent = () => {
     // If first student of first row, do nothing
@@ -935,14 +912,8 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
     }
 
     // If at start of a row (but not first row), go to previous row?
-    // User request implies "Navigation" between students.
-    // If I'm at Student 0 of Row 5, "Previous" could go to Student MAX of Row 5 (no, that's cycle) or Student MAX of Row 4? 
-    // Usually users want to stay in same row or go back.
-    // Let's keep it simple: Previous works within the current row.
-    // If index is 0, maybe go to previous unit?
     if (currentStudentIndex === 0 && currentUnitIndex > 0) {
       // Go to previous unit, last student
-      // Need to calculate previous unit index
       const prevUnit = gradingUnits[currentUnitIndex - 1];
       const prevRowId = prevUnit.rows[0].id; // Simplified mapping
       const prevRowIndex = rubric.rows.findIndex(r => r.id === prevRowId);
@@ -1003,7 +974,6 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
       setCurrentManualScore(undefined);
     }
   };
-
   const saveAllToCloud = async () => {
     const promises = studentOrder.map(async studentName => {
       const data = studentsData.get(studentName);
@@ -1012,12 +982,7 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
         const status = getStudentStatus(studentName);
 
         const gradedStudent: GradedStudent = {
-          id: data.studentName, // Use name as ID base or preserve if exists? 
-          // Logic in useResultsStore handles ID preservation if we match names. 
-          // Ideally we should have persistent temporary IDs.
-          // For now, let's assume useResultsStore handles upsert by name matching if ID is missing or new.
-          // Wait, 'data.id'? We don't track ID in StudentGradingData. 
-          // We rely on 'saveResult' logic to find existing or create new.
+          id: data.sessionStudentId || `${studentName}-${rubric.id}`,
           studentName: data.studentName,
           selections: data.selections,
           rowScores: data.rowScores,
@@ -1025,15 +990,16 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
           calculationCorrect: data.calculationCorrect,
           generalFeedback: data.generalFeedback,
           className: className,
-          totalScore,
-          status: status?.status || 'development',
-          statusLabel: status?.label || 'In Ontwikkeling',
+          totalScore: totalScore,
+          status: status ? status.status : 'development',
+          statusLabel: status ? status.label : 'In ontwikkeling',
           gradedAt: new Date(),
           extraConditionsMet: data.extraConditionsMet,
           metRequirements: data.metRequirements,
           selectedRoute: data.selectedRoute,
           rubricVersion: data.rubricVersion,
-          sessionStudentId: data.sessionStudentId
+          sessionStudentId: data.sessionStudentId,
+          is_self_assessment: data.is_self_assessment
         };
 
         addGradedStudent(rubric.id, gradedStudent);
@@ -1056,21 +1022,6 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
 
   const handleStartReview = async () => {
     await saveAllToCloud();
-    // Don't clear session yet? Or do we? 
-    // Requirement: "Review View fetches saved results... ensuring we review exactly what is in DB".
-    // So session data in LocalStorage (for 'resume') might be obsolete if we modify in Review?
-    // But 'ReviewSessionView' uses Supabase data. 
-    // So clearing the partial-grading session is probably safe/correct,
-    // AS LONG AS the user doesn't "Back" button into grading and expect to see their ephemeral state.
-    // If they go back, they might restart? 
-    // Let's keep session for safety? 
-    // No, if we transition to "Review" architecture, that's a forward move.
-    // Let's clear session to be clean, assuming Review is the new way to interact.
-    // Actually, let's NOT clear session just in case they want to "Save & Continue Later" from Review?
-    // But GradingView creates the session. ReviewView is separate.
-    // Let's leave session clearing to the explicit "Finish" or "Grading Complete".
-
-    // For now: Sync to cloud, then switch view.
     onStartReview();
   };
 
