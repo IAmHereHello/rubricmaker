@@ -209,7 +209,14 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
       setCurrentStudentIndex(0);
       setCompletedStudentCount(0);
       setStudentsData(new Map());
-      setNameInput('');
+
+      // Auto-select first student
+      if (names.length > 0) {
+        setNameInput(names[0]);
+        setOpenCombobox(false); // Close combobox so user can grade immediately
+      } else {
+        setNameInput('');
+      }
     }
   };
 
@@ -872,16 +879,33 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
         setStudentOrder(prev => [...prev, currentStudentName]);
       }
 
-      // Clear Input for next student
-      setNameInput('');
-      setOpenCombobox(true); // Re-open for speed? Optional.
-
-      // Reset inputs
-      setSelectedColumn(null);
-      setCurrentManualScore(undefined);
-      setCurrentCellFeedback('');
-      setGeneralFeedback('');
       setCalculationCorrect(true);
+
+      // Auto-advance logic for Class Roster (Round 1)
+      if (activeStudentNames.length > 0) {
+        // Find next student who hasn't been graded yet (i.e. not in studentOrder, excluding current one which was just added)
+        // Note: 'studentOrder' update is async/batched, so we need to account for 'currentStudentName' being added.
+        // Actually, we just updated studentOrder via setStudentOrder((prev) => [...prev, currentStudentName]);
+        // But we can't read new state yet. 
+        // So we look for names in activeStudentNames that are NOT in (studentOrder + currentStudentName).
+
+        const alreadyGraded = new Set([...studentOrder, currentStudentName]);
+        const nextStudent = activeStudentNames.find(n => !alreadyGraded.has(n));
+
+        if (nextStudent) {
+          // Auto-fill next student
+          setNameInput(nextStudent);
+          setOpenCombobox(false);
+        } else {
+          // No more students to add! We are done with Round 1.
+          // Move to next unit immediately.
+          moveToNextUnit();
+        }
+      } else {
+        // Fallback for manual stack building (no roster)
+        setNameInput('');
+        setOpenCombobox(true);
+      }
 
     } else {
       // ROUND 2+: Follow Stack
