@@ -29,7 +29,6 @@ import { supabase } from '@/lib/supabase';
 import { useSessionStore } from '@/hooks/useSessionStore';
 import { generatePdf } from '@/lib/pdf-generator';
 import { GradingInput } from '@/components/GradingInput';
-import { GradingInput } from '@/components/GradingInput';
 import { useAuth } from '@/contexts/AuthContext';
 import { CreateClassDialog } from '@/components/CreateClassDialog';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -757,11 +756,12 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
     // 1. We have a student name
     // 2. AND (We have a valid score OR We are skipping this row/not-made)
     const hasValidExamScore = isExam && currentManualScore !== undefined;
-    const hasValidColumn = !isExam && selectedColumn;
+    const hasValidMasteryScore = isMastery && currentStudentData.rowScores?.[currentRow.id] !== undefined;
+    const hasValidColumn = !isExam && !isMastery && selectedColumn;
 
     // Logic: If "Not Made" is true, we don't need a score.
     const canProceed = currentStudentName && (
-      nextNotMade || hasValidExamScore || hasValidColumn
+      nextNotMade || hasValidExamScore || hasValidMasteryScore || hasValidColumn
     );
 
     if (!canProceed) return;
@@ -1692,7 +1692,11 @@ export function HorizontalGradingView({ rubric, initialStudentNames, className, 
                 disabled={
                   (!isFirstRow && currentStudentIndex >= studentOrder.length) || // End of stack in R2
                   (isFirstRow && !nameInput.trim()) || // No name in R1
-                  (isExam ? currentManualScore === undefined : !selectedColumn) // No score
+                  (isExam
+                    ? currentManualScore === undefined
+                    : isMastery
+                      ? currentStudentData.rowScores?.[currentRow.id] === undefined
+                      : !selectedColumn) // No score
                 }
                 className="flex-[2] gap-2"
                 size="lg"
